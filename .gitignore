@@ -21,6 +21,7 @@ node_modules/
 dashboard/.next/
 dashboard/out/
 dashboard/.vercel/
+dashboard/next-env.d.ts
 
 # Rust (tui)
 tui/target/
