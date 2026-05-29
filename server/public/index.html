@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Monotub</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --card: #181b22;
+      --border: #2a2f3a;
+      --text: #e6e9ef;
+      --muted: #8b93a7;
+      --accent: #5b8def;
+      --on: #4ade80;
+      --off: #f87171;
+      --offline: #6b7280;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 1.5rem 1rem;
+    }
+    main {
+      max-width: 28rem;
+      margin: 0 auto;
+      display: grid;
+      gap: 1rem;
+    }
+    h1 {
+      margin: 0 0 0.25rem;
+      font-size: 1.5rem;
+      font-weight: 600;
+    }
+    .sub {
+      color: var(--muted);
+      font-size: 0.85rem;
+      margin: 0;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      padding: 1rem 1.1rem;
+    }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.35rem 0;
+    }
+    .row + .row { border-top: 1px solid var(--border); }
+    .label { color: var(--muted); font-size: 0.85rem; }
+    .value { font-weight: 500; font-variant-numeric: tabular-nums; }
+    .pill {
+      padding: 0.15rem 0.6rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+    .pill.on  { background: rgba(74, 222, 128, 0.15); color: var(--on); }
+    .pill.off { background: rgba(248, 113, 113, 0.15); color: var(--off); }
+    .pill.offline { background: rgba(107, 114, 128, 0.2); color: var(--offline); }
+
+    .controls { display: grid; gap: 0.85rem; }
+    .field { display: grid; gap: 0.35rem; }
+    .field label { color: var(--muted); font-size: 0.85rem; }
+    .field-row { display: flex; gap: 0.5rem; }
+
+    input[type="number"] {
+      flex: 1;
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      padding: 0.55rem 0.7rem;
+      font-size: 0.95rem;
+      font-family: inherit;
+    }
+    input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+    button {
+      background: var(--accent);
+      color: white;
+      border: 0;
+      border-radius: 0.5rem;
+      padding: 0.55rem 1rem;
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      font-family: inherit;
+      transition: opacity 0.15s;
+    }
+    button:hover { opacity: 0.9; }
+    button:active { opacity: 0.75; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    button.secondary { background: var(--border); color: var(--text); }
+    button.danger    { background: rgba(248, 113, 113, 0.85); }
+    button.success   { background: rgba(74, 222, 128, 0.85); color: #0f1115; }
+
+    .toggle-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+    .stale { opacity: 0.5; }
+    .footer { color: var(--muted); font-size: 0.75rem; text-align: center; }
+
+    .progress {
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-top: 0.5rem;
+    }
+    .progress-bar {
+      height: 100%;
+      width: 0%;
+      background: var(--accent);
+      transition: width 100ms linear, background-color 200ms;
+    }
+    .progress-bar.on  { background: var(--on); }
+    .progress-bar.off { background: var(--off); }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Monotub</h1>
+      <p class="sub" id="last-seen">Waiting for device...</p>
+    </header>
+
+    <section class="card">
+      <div class="row">
+        <span class="label">Device</span>
+        <span class="pill offline" id="connected">unknown</span>
+      </div>
+      <div class="row">
+        <span class="label">Fan</span>
+        <span class="pill off" id="fan">unknown</span>
+      </div>
+      <div class="row">
+        <span class="label">Routine</span>
+        <span class="pill off" id="routine">unknown</span>
+      </div>
+      <div class="row">
+        <span class="label">Uptime</span>
+        <span class="value" id="uptime">—</span>
+      </div>
+      <div class="row">
+        <span class="label">Signal</span>
+        <span class="value" id="rssi">—</span>
+      </div>
+      <div class="row">
+        <span class="label">Next change in</span>
+        <span class="value" id="countdown">—</span>
+      </div>
+      <div class="progress"><div class="progress-bar" id="progress"></div></div>
+    </section>
+
+    <section class="card controls">
+      <div class="toggle-row">
+        <button class="success" data-action="routine-on">Routine ON</button>
+        <button class="danger"  data-action="routine-off">Routine OFF</button>
+      </div>
+
+      <div class="field">
+        <label for="on-seconds">Fan ON duration (seconds)</label>
+        <div class="field-row">
+          <input type="number" id="on-seconds" min="1" step="1" />
+          <button data-action="set-on">Set</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="off-seconds">Fan OFF duration (seconds)</label>
+        <div class="field-row">
+          <input type="number" id="off-seconds" min="1" step="1" />
+          <button data-action="set-off">Set</button>
+        </div>
+      </div>
+    </section>
+
+    <p class="footer">Auto-refresh every 2s</p>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    async function fetchState() {
+      try {
+        const res = await fetch('/state');
+        if (!res.ok) throw new Error(res.statusText);
+        return await res.json();
+      } catch {
+        return null;
+      }
+    }
+
+    function relativeTime(iso) {
+      if (!iso) return 'never';
+      const diff = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
+      if (diff < 5) return 'just now';
+      if (diff < 60) return diff + 's ago';
+      const m = Math.floor(diff / 60);
+      if (m < 60) return m + 'm ago';
+      return Math.floor(m / 60) + 'h ago';
+    }
+
+    function formatUptime(seconds) {
+      if (seconds == null) return '—';
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      const s = seconds % 60;
+      if (h) return `${h}h ${m}m`;
+      if (m) return `${m}m ${s}s`;
+      return `${s}s`;
+    }
+
+    function formatRemaining(ms) {
+      if (ms <= 0) return 'soon';
+      const totalSec = Math.ceil(ms / 1000);
+      const h = Math.floor(totalSec / 3600);
+      const m = Math.floor((totalSec % 3600) / 60);
+      const s = totalSec % 60;
+      if (h) return `${h}h ${m}m`;
+      if (m) return `${m}m`;
+      return `${s}s`;
+    }
+
+    function setPill(el, text, kind) {
+      el.textContent = text;
+      el.className = 'pill ' + kind;
+    }
+
+    let currentState = null;
+
+    async function render() {
+      const s = await fetchState();
+      if (!s) {
+        $('last-seen').textContent = 'Server unreachable';
+        return;
+      }
+      currentState = s;
+
+      const stale = !s.lastSeenAt ||
+        (Date.now() - new Date(s.lastSeenAt).getTime()) > 60000;
+
+      $('last-seen').textContent = 'Last message: ' + relativeTime(s.lastSeenAt);
+      $('last-seen').classList.toggle('stale', stale);
+
+      const online = s.connected === 'online';
+      setPill($('connected'),
+              online ? 'online' : (s.connected ?? 'unknown'),
+              online ? 'on' : 'offline');
+
+      const fanOn = s.fan === 'ON' || s.status?.fan === true;
+      setPill($('fan'), fanOn ? 'on' : 'off', fanOn ? 'on' : 'off');
+
+      const routine = s.status?.routine === true;
+      setPill($('routine'), routine ? 'on' : 'off', routine ? 'on' : 'off');
+
+      $('uptime').textContent = formatUptime(s.status?.uptime_s);
+      $('rssi').textContent = s.status?.rssi != null ? s.status.rssi + ' dBm' : '—';
+
+      if ($('on-seconds') !== document.activeElement && s.status?.on_seconds != null) {
+        $('on-seconds').value = s.status.on_seconds;
+      }
+      if ($('off-seconds') !== document.activeElement && s.status?.off_seconds != null) {
+        $('off-seconds').value = s.status.off_seconds;
+      }
+    }
+
+    function tickCountdown() {
+      const s = currentState;
+      const cd = $('countdown');
+      const bar = $('progress');
+
+      if (!s?.status?.routine) {
+        cd.textContent = s?.status?.routine === false ? 'paused' : '—';
+        bar.style.width = '0%';
+        bar.className = 'progress-bar';
+        return;
+      }
+      if (!s.nextTransitionAt || !s.lastTransitionAt) {
+        cd.textContent = '—';
+        bar.style.width = '0%';
+        return;
+      }
+
+      const now = Date.now();
+      const end = new Date(s.nextTransitionAt).getTime();
+      const start = new Date(s.lastTransitionAt).getTime();
+      const total = Math.max(1, end - start);
+      const remaining = Math.max(0, end - now);
+      const elapsed = Math.max(0, Math.min(total, now - start));
+
+      cd.textContent = formatRemaining(remaining);
+      bar.style.width = ((elapsed / total) * 100).toFixed(1) + '%';
+      bar.className = 'progress-bar ' + (s.fan === 'ON' ? 'on' : 'off');
+    }
+
+    async function post(path, body) {
+      const res = await fetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert('Error: ' + (err.error ?? res.statusText));
+      }
+      await render();
+    }
+
+    document.addEventListener('click', (e) => {
+      const target = e.target.closest('[data-action]');
+      if (!target) return;
+      const action = target.dataset.action;
+
+      switch (action) {
+        case 'routine-on':  return post('/routine', { enabled: true });
+        case 'routine-off': return post('/routine', { enabled: false });
+        case 'set-on': {
+          const seconds = Number($('on-seconds').value);
+          return post('/on-seconds', { seconds });
+        }
+        case 'set-off': {
+          const seconds = Number($('off-seconds').value);
+          return post('/off-seconds', { seconds });
+        }
+      }
+    });
+
+    render();
+    setInterval(render, 2000);
+    setInterval(tickCountdown, 100);
+  </script>
+</body>
+</html>

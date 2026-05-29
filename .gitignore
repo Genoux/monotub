@@ -1,0 +1,33 @@
+# IDE / editor
+.cursor/hooks/state/
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# env / secrets
+.env
+.env.local
+.env.*.local
+**/secrets.h
+
+# Node / Bun (dashboard, server)
+node_modules/
+*.log
+*.tsbuildinfo
+
+# Next.js (dashboard)
+dashboard/.next/
+dashboard/out/
+dashboard/.vercel/
+
+# Rust (tui)
+tui/target/
+
+# PlatformIO (esp32)
+esp32/.pio/
+esp32/build/
+esp32/*.bin
+esp32/*.elf
+esp32/*.map
