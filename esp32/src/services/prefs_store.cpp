@@ -5,10 +5,11 @@
 
 namespace {
 Preferences store;
-}
+}  // namespace
 
 void prefsLoad() {
   store.begin("monotub", true);
+  const bool seeded = store.getBool("relay_seeded", false);
   g.fanSettings.scheduledOnSeconds =
       store.getUInt("on_sec", DEFAULT_ON_SECONDS);
   g.fanSettings.scheduledOffSeconds =
@@ -33,18 +34,32 @@ void prefsLoad() {
       store.getUInt("mist_cd", DEFAULT_MIST_COOLDOWN_SECONDS);
   g.humiditySettings.fanCooldownSeconds =
       store.getUInt("fan_cd", DEFAULT_FAN_COOLDOWN_SECONDS);
-  // Do not restore scheduledFanOn — fan always starts OFF on boot.
-  // The routine timer fires naturally and sets it when ready.
+
   g.actuators.scheduledFanOn = false;
-  g.actuators.fanOn  = store.getBool("relay_fan",  DEFAULT_RELAY_FAN_ON);
-  g.actuators.mistOn = store.getBool("relay_mist", DEFAULT_RELAY_MIST_ON);
+  if (seeded && store.isKey("fan_manual")) {
+    g.actuators.manualFanOn = store.getBool("fan_manual", false);
+  } else if (seeded) {
+    g.actuators.manualFanOn = store.getBool("relay_fan", false);
+  } else {
+    g.actuators.manualFanOn = false;
+  }
+  if (seeded && store.isKey("mist_manual")) {
+    g.actuators.manualMistOn = store.getBool("mist_manual", true);
+  } else if (seeded) {
+    g.actuators.manualMistOn = store.getBool("relay_mist", true);
+  } else {
+    g.actuators.manualMistOn = true;
+  }
+  g.actuators.automationMistOn = true;
+  g.actuators.fanOn = false;
+  g.actuators.mistOn = false;
   store.end();
 }
 
 void prefsSaveRelayState() {
   store.begin("monotub", false);
-  store.putBool("relay_fan",    g.actuators.fanOn);
-  store.putBool("relay_mist",   g.actuators.mistOn);
+  store.putBool("relay_fan", g.actuators.fanOn);
+  store.putBool("relay_mist", g.actuators.mistOn);
   store.putBool("relay_seeded", true);
   store.end();
 }
@@ -76,5 +91,7 @@ void prefsSave() {
   store.putUInt("fan_pulse", g.humiditySettings.fanPulseSeconds);
   store.putUInt("mist_cd", g.humiditySettings.mistCooldownSeconds);
   store.putUInt("fan_cd", g.humiditySettings.fanCooldownSeconds);
+  store.putBool("fan_manual", g.actuators.manualFanOn);
+  store.putBool("mist_manual", g.actuators.manualMistOn);
   store.end();
 }

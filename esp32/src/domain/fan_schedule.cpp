@@ -30,6 +30,17 @@ void fanScheduleBegin() {
   logSchedule("start");
 }
 
+void fanScheduleResumeWithOffWait() {
+  g.actuators.scheduledFanOn = false;
+  schedulePhaseTimer(g.fanSettings.scheduledOffSeconds);
+  logSchedule("resume");
+}
+
+void fanSchedulePause() {
+  g.actuators.scheduledFanOn = false;
+  g.runtime.nextScheduledFanToggleAt = 0;
+}
+
 void fanScheduleResyncTimer() {
   if (!g.fanSettings.routineEnabled) return;
   schedulePhaseTimer(currentPhaseSeconds());

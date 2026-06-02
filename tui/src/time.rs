@@ -13,6 +13,9 @@ pub fn transition_progress(state: &DeviceState) -> Option<TransitionProgress> {
     if !status.routine {
         return None;
     }
+    if status.routine_paused == Some(true) {
+        return None;
+    }
 
     let phase_on = status
         .scheduled_fae_on

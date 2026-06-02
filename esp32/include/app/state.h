@@ -11,17 +11,18 @@ enum class FanReason {
 };
 
 enum class MistReason {
-  Off,
   Manual,
-  LowHumidity,
+  HumidityAutomation,
 };
 
 struct EnvironmentState {
   float humidityPercent = NAN;
   float temperatureC = NAN;
   float smoothedHumidityPercent = NAN;
+  float simulatedHumidityPercent = 88.0F;
   uint8_t sampleCount = 0;
   bool ok = false;
+  bool simulationEnabled = false;
   uint32_t lastReadAt = 0;
 };
 
@@ -47,30 +48,28 @@ struct ActuatorState {
   bool fanOn = false;
   bool mistOn = false;
   bool manualFanOn = false;
-  bool manualMistOn = false;
+  bool manualMistOn = true;
+  bool automationMistOn = true;
   bool scheduledFanOn = false;
   FanReason fanReason = FanReason::Off;
-  MistReason mistReason = MistReason::Off;
+  MistReason mistReason = MistReason::Manual;
 };
 
 struct RuntimeState {
   uint32_t nextScheduledFanToggleAt = 0;
   uint32_t lowHumiditySince = 0;
   uint32_t highHumiditySince = 0;
-  uint32_t mistPulseUntil = 0;
   uint32_t correctiveFanUntil = 0;
-  uint32_t lastMistPulseAt = 0;
   uint32_t lastCorrectiveFanAt = 0;
   uint32_t lastStatusAt = 0;
   uint32_t lastControllerAt = 0;
   uint32_t lastMqttRetry = 0;
   uint32_t lastWifiRetry = 0;
   uint32_t relayCommandSuppressUntil = 0;
+  uint32_t relayBootSuppressUntil = 0;
   uint32_t fanCommandLockUntil = 0;
-  uint32_t mistCommandLockUntil = 0;
   uint32_t lastRelayCommandAt = 0;
-  bool manualFanHold = false;
-  bool manualMistHold = false;
+  bool fanRoutinePausedByHumidity = false;
 };
 
 struct MonotubState {

@@ -30,7 +30,11 @@ fn render_footer(frame: &mut Frame, area: ratatui::layout::Rect, app: &App) {
         app.focused_section.commands()
     };
 
-    let logs_label = if app.show_logs_strip { "l logs*" } else { "l logs" };
+    let logs_label = if app.show_logs_strip {
+        "l logs*"
+    } else {
+        "l logs"
+    };
 
     frame.render_widget(
         Paragraph::new(Line::from(vec![

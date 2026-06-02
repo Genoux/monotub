@@ -7,11 +7,6 @@ uint32_t elapsedSecondsSince(uint32_t startedAt) {
   return (millis() - startedAt) / 1000UL;
 }
 
-uint32_t remainingSeconds(uint32_t until) {
-  if (until == 0 || (int32_t)(until - millis()) <= 0) return 0;
-  return (until - millis() + 999UL) / 1000UL;
-}
-
 bool cooldownReady(uint32_t lastAt, uint32_t cooldownSeconds) {
   return lastAt == 0 || elapsedSecondsSince(lastAt) >= cooldownSeconds;
 }
@@ -19,6 +14,7 @@ bool cooldownReady(uint32_t lastAt, uint32_t cooldownSeconds) {
 bool pulseActive(uint32_t until) {
   return until != 0 && (int32_t)(until - millis()) > 0;
 }
+
 }  // namespace
 
 void humidityControlTick() {
@@ -32,11 +28,7 @@ void humidityControlTick() {
   const uint32_t now = millis();
   const float rh = g.environment.smoothedHumidityPercent;
 
-  if (rh < g.humiditySettings.lowRhPercent) {
-    if (g.runtime.lowHumiditySince == 0) g.runtime.lowHumiditySince = now;
-  } else {
-    g.runtime.lowHumiditySince = 0;
-  }
+  g.runtime.lowHumiditySince = 0;
 
   if (rh > g.humiditySettings.highRhPercent) {
     if (g.runtime.highHumiditySince == 0) g.runtime.highHumiditySince = now;
@@ -44,31 +36,19 @@ void humidityControlTick() {
     g.runtime.highHumiditySince = 0;
   }
 
-  const bool mistActive = pulseActive(g.runtime.mistPulseUntil);
   const bool fanActive = pulseActive(g.runtime.correctiveFanUntil);
-  const bool lowPersisted =
-      g.runtime.lowHumiditySince != 0 &&
-      elapsedSecondsSince(g.runtime.lowHumiditySince) >=
-          g.humiditySettings.lowPersistSeconds;
   const bool highPersisted =
       g.runtime.highHumiditySince != 0 &&
       elapsedSecondsSince(g.runtime.highHumiditySince) >=
           g.humiditySettings.highPersistSeconds;
 
-  if (lowPersisted && !mistActive && !fanActive &&
-      cooldownReady(g.runtime.lastMistPulseAt, g.humiditySettings.mistCooldownSeconds)) {
-    g.runtime.mistPulseUntil = now + g.humiditySettings.mistPulseSeconds * 1000UL;
-    g.runtime.lastMistPulseAt = now;
-    g.runtime.lowHumiditySince = 0;
-    Serial.println("Humidity low: starting mist pulse");
-  }
-
-  if (highPersisted && !fanActive && !mistActive && !g.actuators.scheduledFanOn &&
+  if (highPersisted && !fanActive &&
       cooldownReady(g.runtime.lastCorrectiveFanAt, g.humiditySettings.fanCooldownSeconds)) {
     g.runtime.correctiveFanUntil = now + g.humiditySettings.fanPulseSeconds * 1000UL;
     g.runtime.lastCorrectiveFanAt = now;
     g.runtime.highHumiditySince = 0;
-    Serial.println("Humidity high: starting corrective fan pulse");
+    Serial.printf("Humidity %.1f%% > %.1f%%: starting corrective fan pulse\n",
+                  rh, g.humiditySettings.highRhPercent);
   }
 }
 
@@ -81,9 +61,13 @@ uint32_t humidityFanCooldownRemainingSeconds() {
 }
 
 uint32_t humidityMistCooldownRemainingSeconds() {
-  if (g.runtime.lastMistPulseAt == 0) return 0;
-  uint32_t elapsed = elapsedSecondsSince(g.runtime.lastMistPulseAt);
-  return elapsed >= g.humiditySettings.mistCooldownSeconds
+  return 0;
+}
+
+uint32_t humidityHighPersistRemainingSeconds() {
+  if (g.runtime.highHumiditySince == 0) return 0;
+  uint32_t elapsed = elapsedSecondsSince(g.runtime.highHumiditySince);
+  return elapsed >= g.humiditySettings.highPersistSeconds
              ? 0
-             : g.humiditySettings.mistCooldownSeconds - elapsed;
+             : g.humiditySettings.highPersistSeconds - elapsed;
 }

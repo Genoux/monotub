@@ -18,8 +18,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     }
 
     let (body_area, log_area) = if app.show_logs_strip {
-        let [body, log] =
-            Layout::vertical([Constraint::Fill(1), Constraint::Fill(1)]).areas(area);
+        let [body, log] = Layout::vertical([Constraint::Fill(1), Constraint::Fill(1)]).areas(area);
         (body, Some(log))
     } else {
         (area, None)
@@ -66,7 +65,16 @@ pub fn handle_key(key: KeyEvent, app: &App) -> Option<AppCommand> {
             KeyCode::Char('a') => Some(AppCommand::ToggleAutomation),
             _ => None,
         },
-        FocusedSection::Sensor | FocusedSection::Device => None,
+        FocusedSection::Device => match key.code {
+            KeyCode::Char('y') => Some(AppCommand::ResyncRelays),
+            _ => None,
+        },
+        FocusedSection::Sensor => match key.code {
+            KeyCode::Char('s') => Some(AppCommand::ToggleSimulation),
+            KeyCode::Char('+') | KeyCode::Char('=') => Some(AppCommand::AdjustSimulatedHumidity(1)),
+            KeyCode::Char('-') => Some(AppCommand::AdjustSimulatedHumidity(-1)),
+            _ => None,
+        },
     }
 }
 
@@ -90,7 +98,7 @@ fn section_block(title: &'static str, focused: bool) -> Block<'static> {
 
 fn render_fan(frame: &mut Frame, area: Rect, app: &App) {
     let focused = app.focused_section == FocusedSection::Fan;
-    let block = section_block("Fan", focused);
+    let block = section_block("Fan Relay", focused);
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
@@ -110,12 +118,6 @@ fn render_fan(frame: &mut Frame, area: Rect, app: &App) {
         .map(|r| format!("  ·  {r}"))
         .unwrap_or_default();
 
-    let manual = display_bool(
-        status.and_then(|s| s.manual_fan),
-        state.desired.manual_fan,
-        "ON",
-        "OFF",
-    );
     let routine = display_bool(
         status.map(|s| s.routine),
         state.desired.routine,
@@ -132,16 +134,28 @@ fn render_fan(frame: &mut Frame, area: Rect, app: &App) {
         .map(|s| s.routine)
         .or(state.desired.routine)
         .unwrap_or(false);
+    let automation_owns_fan = status.and_then(|s| s.automation_enabled).unwrap_or(false);
+    let manual_fan = display_bool(
+        status.and_then(|s| s.manual_fan),
+        if automation_owns_fan {
+            None
+        } else {
+            state.desired.manual_fan
+        },
+        "ON",
+        "OFF",
+    );
+    let routine_paused = status.and_then(|s| s.routine_paused).unwrap_or(false);
+    let pause_reason = status
+        .and_then(|s| s.routine_pause_reason.as_deref())
+        .map(format_pause_reason)
+        .unwrap_or("—");
 
     let mut lines = vec![
         Line::from(vec![
-            Span::styled(label("State"), theme::muted()),
+            Span::styled(label("Relay"), theme::muted()),
             Span::styled(fan_label, theme::fan(state.fan.as_deref())),
             Span::styled(fan_reason, theme::muted()),
-        ]),
-        Line::from(vec![
-            Span::styled(label("Manual"), theme::muted()),
-            Span::styled(manual.text.clone(), manual.style()),
         ]),
         Line::from(vec![
             Span::styled(label("Routine"), theme::muted()),
@@ -149,7 +163,12 @@ fn render_fan(frame: &mut Frame, area: Rect, app: &App) {
         ]),
     ];
 
-    if routine_on {
+    if routine_on && routine_paused {
+        lines.push(Line::from(vec![
+            Span::styled(label("Paused"), theme::muted()),
+            Span::styled(pause_reason, theme::warn()),
+        ]));
+    } else if routine_on {
         let phase_on = status
             .and_then(|s| s.scheduled_fae_on)
             .unwrap_or(matches!(state.fan.as_deref(), Some("ON")));
@@ -157,6 +176,18 @@ fn render_fan(frame: &mut Frame, area: Rect, app: &App) {
         lines.push(Line::from(vec![
             Span::styled(label("Phase"), theme::muted()),
             Span::styled(phase, theme::accent_bright()),
+        ]));
+    }
+
+    if automation_owns_fan {
+        lines.push(Line::from(vec![
+            Span::styled(label("Manual"), theme::muted()),
+            Span::styled("disabled while automation is ON", theme::muted()),
+        ]));
+    } else {
+        lines.push(Line::from(vec![
+            Span::styled(label("Manual"), theme::muted()),
+            Span::styled(manual_fan.text.clone(), manual_fan.style()),
         ]));
     }
 
@@ -218,12 +249,20 @@ fn render_mist(frame: &mut Frame, area: Rect, app: &App) {
     let state = app.device_state.as_ref();
     let status = state.and_then(|s| s.status.as_ref());
 
-    let mist = display_bool(
-        status.and_then(|s| s.mist),
-        state.and_then(|s| s.desired.mist),
-        "ON",
-        "OFF",
-    );
+    let automation_owns_mist = status.and_then(|s| s.automation_enabled).unwrap_or(false);
+    let reported_mist = status.and_then(|s| {
+        if automation_owns_mist {
+            s.automation_mist.or(s.mist)
+        } else {
+            s.manual_mist.or(s.mist)
+        }
+    });
+    let desired_mist = if automation_owns_mist {
+        None
+    } else {
+        state.and_then(|s| s.desired.mist)
+    };
+    let mist = display_bool(reported_mist, desired_mist, "ON", "OFF");
     let mist_reason = status
         .and_then(|s| s.mist_reason.as_deref())
         .filter(|r| *r != "off")
@@ -246,6 +285,13 @@ fn render_mist(frame: &mut Frame, area: Rect, app: &App) {
         lines.push(Line::from(vec![
             Span::styled(label("Pulse"), theme::muted()),
             Span::styled(pulse, theme::accent()),
+        ]));
+    }
+
+    if automation_owns_mist {
+        lines.push(Line::from(vec![
+            Span::styled(label("Manual"), theme::muted()),
+            Span::styled("disabled while automation is ON", theme::muted()),
         ]));
     }
 
@@ -277,15 +323,17 @@ fn render_automation(frame: &mut Frame, area: Rect, app: &App) {
     );
 
     let cooldowns = {
+        let high = status
+            .and_then(|s| s.humidity_high_persist_remaining_s)
+            .filter(|&s| s > 0)
+            .map(|s| format!("fan in {}", format_duration(s as i64)));
         let fan_cd = status
             .and_then(|s| s.fan_cooldown_remaining_s)
+            .filter(|&s| s > 0)
             .map(|s| format!("fan CD {}", format_duration(s as i64)))
-            .unwrap_or_else(|| "fan CD —".into());
-        let mist_cd = status
-            .and_then(|s| s.mist_cooldown_remaining_s)
-            .map(|s| format!("mist CD {}", format_duration(s as i64)))
-            .unwrap_or_else(|| "mist CD —".into());
-        format!("{fan_cd}  ·  {mist_cd}")
+            .unwrap_or_else(|| "fan CD 0s".into());
+        high.map(|high| format!("{high}  ·  {fan_cd}"))
+            .unwrap_or(fan_cd)
     };
 
     let mut lines = vec![
@@ -337,6 +385,16 @@ fn render_sensor(frame: &mut Frame, area: Rect, app: &App) {
         .and_then(|s| s.smoothed_humidity_percent)
         .map(|h| format!("smoothed {h:.1}%"))
         .unwrap_or_else(|| "smoothed —".into());
+    let simulation = status
+        .and_then(|s| s.simulation_enabled)
+        .filter(|enabled| *enabled)
+        .map(|_| {
+            status
+                .and_then(|s| s.simulated_humidity_percent)
+                .map(|h| format!("SIM {h:.0}%"))
+                .unwrap_or_else(|| "SIM".into())
+        })
+        .unwrap_or_default();
 
     let mut lines = vec![
         Line::from(vec![
@@ -353,6 +411,8 @@ fn render_sensor(frame: &mut Frame, area: Rect, app: &App) {
             ),
             Span::styled("   ", theme::muted()),
             Span::styled(smoothed, theme::muted()),
+            Span::styled("   ", theme::muted()),
+            Span::styled(simulation, theme::warn()),
         ]),
     ];
 
@@ -455,19 +515,24 @@ fn render_help_overlay(frame: &mut Frame, area: Rect) {
         Line::from(Span::styled("monotub controls", theme::accent_bright())),
         Line::from(""),
         Line::from(Span::styled("Fan section", theme::muted())),
+        help_line("x", "toggle manual fan when automation is OFF"),
         help_line("r", "toggle routine"),
-        help_line("x", "toggle fan (pulse)"),
         help_line("o", "edit fan ON seconds"),
         help_line("f", "edit fan OFF seconds"),
         Line::from(""),
         Line::from(Span::styled("Mist section", theme::muted())),
         help_line("m", "toggle mist"),
         Line::from(""),
+        Line::from(Span::styled("Sensor section", theme::muted())),
+        help_line("s", "toggle humidity simulation"),
+        help_line("+ / -", "adjust simulated RH"),
+        Line::from(""),
         Line::from(Span::styled("Automation section", theme::muted())),
         help_line("a", "toggle automation"),
         Line::from(""),
         Line::from(Span::styled("Global", theme::muted())),
         help_line("Tab / Shift+Tab", "navigate sections"),
+        help_line("y", "resync relays (Device section)"),
         help_line("l", "toggle event log"),
         help_line("?", "toggle this help"),
         help_line("q", "quit"),
@@ -515,6 +580,16 @@ fn sensor_status_style(
     }
 }
 
+fn format_pause_reason(reason: &str) -> &'static str {
+    match reason {
+        "automation_off" => "automation off",
+        "humidity_low" => "humidity low",
+        "humidity_high" => "humidity high",
+        "unknown" => "sensor unknown",
+        _ => "—",
+    }
+}
+
 fn progress_bar_line(
     ratio: f64,
     remaining_seconds: i64,
@@ -527,7 +602,10 @@ fn progress_bar_line(
 
     Line::from(vec![
         Span::styled("━".repeat(filled), theme::progress_bar()),
-        Span::styled("─".repeat(bar_width.saturating_sub(filled)), theme::progress_empty()),
+        Span::styled(
+            "─".repeat(bar_width.saturating_sub(filled)),
+            theme::progress_empty(),
+        ),
         Span::styled(
             format!("  {} in {}", next_label, format_duration(remaining_seconds)),
             theme::label(),

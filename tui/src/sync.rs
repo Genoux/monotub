@@ -18,7 +18,12 @@ impl SyncDisplay {
     }
 }
 
-pub fn display_bool(reported: Option<bool>, desired: Option<bool>, on: &str, off: &str) -> SyncDisplay {
+pub fn display_bool(
+    reported: Option<bool>,
+    desired: Option<bool>,
+    on: &str,
+    off: &str,
+) -> SyncDisplay {
     match desired.or(reported) {
         Some(value) => SyncDisplay {
             text: if value { on } else { off }.to_string(),

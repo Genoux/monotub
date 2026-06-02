@@ -46,24 +46,23 @@ const validateAutomationPatch = (
 ): Partial<Pick<MonotubState["desired"], AutomationField>> | null => {
 	if (!body || typeof body !== "object") return null;
 
-	return (Object.keys(automationFieldTopics) as AutomationField[]).reduce<
-		Partial<Pick<MonotubState["desired"], AutomationField>> | null
-	>((patch, field) => {
-		if (patch === null) return null;
-		if (!(field in body)) return patch;
+	const patch: Partial<Pick<MonotubState["desired"], AutomationField>> = {};
+	for (const field of Object.keys(automationFieldTopics) as AutomationField[]) {
+		if (!(field in body)) continue;
 
 		const value = (body as Record<string, unknown>)[field];
 		if (field === "automation_enabled") {
-			return typeof value === "boolean"
-				? { ...patch, automation_enabled: value }
-				: null;
+			if (typeof value !== "boolean") return null;
+			patch.automation_enabled = value;
+			continue;
 		}
 
 		if (!numberFields.has(field)) return null;
 		const numberValue = Number(value);
 		if (!Number.isFinite(numberValue) || numberValue <= 0) return null;
-		return { ...patch, [field]: numberValue };
-	}, {});
+		patch[field] = numberValue;
+	}
+	return patch;
 };
 
 export const registerFanControlHttpRoutes = (
@@ -82,6 +81,36 @@ export const registerFanControlHttpRoutes = (
 		res.json(getState());
 	});
 
+	app.post("/sync", (_req: Request, res: Response) => {
+		publish(monotubTopics.statusRequest, String(Date.now()));
+		res.json({ ok: true });
+	});
+
+	app.post("/relay/resync", (_req: Request, res: Response) => {
+		publish(monotubTopics.relayResync, String(Date.now()));
+		res.json({ ok: true });
+	});
+
+	app.post("/simulation", (req: Request, res: Response) => {
+		const enabled = req.body?.enabled;
+		if (typeof enabled !== "boolean") {
+			res.status(400).json({ error: "body.enabled must be boolean" });
+			return;
+		}
+		publish(monotubTopics.simulationEnabledSet, enabled ? "ON" : "OFF");
+		res.json({ ok: true });
+	});
+
+	app.post("/simulation/humidity", (req: Request, res: Response) => {
+		const humidity = Number(req.body?.humidity);
+		if (!Number.isFinite(humidity) || humidity <= 0 || humidity > 100) {
+			res.status(400).json({ error: "body.humidity must be 0-100" });
+			return;
+		}
+		publish(monotubTopics.simulationHumiditySet, String(humidity));
+		res.json({ ok: true });
+	});
+
 	app.post("/routine", (req: Request, res: Response) => {
 		const enabled = req.body?.enabled;
 		if (typeof enabled !== "boolean") {
@@ -94,6 +123,10 @@ export const registerFanControlHttpRoutes = (
 	});
 
 	app.post("/fan", (req: Request, res: Response) => {
+		if (getState().status?.automation_enabled === true) {
+			res.status(409).json({ error: "manual fan control requires automation off" });
+			return;
+		}
 		const enabled = req.body?.enabled;
 		if (typeof enabled !== "boolean") {
 			res.status(400).json({ error: "body.enabled must be boolean" });
@@ -106,10 +139,19 @@ export const registerFanControlHttpRoutes = (
 
 	app.post("/fan/toggle", (_req: Request, res: Response) => {
 		const state = getState();
-		const next = !(state.desired.manual_fan ?? state.status?.manual_fan ?? false);
+		if (state.status?.automation_enabled === true) {
+			res.status(409).json({ error: "manual fan control requires automation off" });
+			return;
+		}
+		const current =
+			state.desired.manual_fan ??
+			state.status?.manual_fan ??
+			state.status?.fan ??
+			false;
+		const next = !current;
 		publish(monotubTopics.fanSet, "TOGGLE");
 		setDesiredManualFan(state, next);
-		res.json({ ok: true, manual_fan: next });
+		res.json({ ok: true, fan: next });
 	});
 
 	app.post("/on-seconds", (req: Request, res: Response) => {
@@ -149,7 +191,12 @@ export const registerFanControlHttpRoutes = (
 
 	app.post("/mist/toggle", (_req: Request, res: Response) => {
 		const state = getState();
-		const next = !(state.desired.mist ?? state.status?.mist ?? false);
+		const current =
+			state.desired.mist ??
+			state.status?.manual_mist ??
+			state.status?.mist ??
+			true;
+		const next = !current;
 		publish(monotubTopics.mistSet, "TOGGLE");
 		setDesiredMist(state, next);
 		res.json({ ok: true, mist: next });

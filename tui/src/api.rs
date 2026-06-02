@@ -6,8 +6,12 @@ pub struct FanStatus {
     pub on_seconds: u32,
     pub off_seconds: u32,
     pub routine: bool,
+    pub routine_paused: Option<bool>,
+    pub routine_pause_reason: Option<String>,
     pub fan: bool,
     pub manual_fan: Option<bool>,
+    pub manual_mist: Option<bool>,
+    pub automation_mist: Option<bool>,
     pub mist: Option<bool>,
     pub uptime_s: u64,
     pub rssi: i32,
@@ -17,10 +21,15 @@ pub struct FanStatus {
     pub environment_ok: Option<bool>,
     pub smoothed_humidity_percent: Option<f32>,
     pub automation_enabled: Option<bool>,
+    pub simulation_enabled: Option<bool>,
+    pub simulated_humidity_percent: Option<f32>,
     pub fan_reason: Option<String>,
     pub mist_reason: Option<String>,
     pub humidity_low_threshold: Option<f32>,
     pub humidity_high_threshold: Option<f32>,
+    pub humidity_soft_low_threshold: Option<f32>,
+    pub humidity_soft_high_threshold: Option<f32>,
+    pub humidity_hard_high_threshold: Option<f32>,
     pub humidity_low_persist_seconds: Option<u32>,
     pub humidity_high_persist_seconds: Option<u32>,
     pub mist_pulse_seconds: Option<u32>,
@@ -29,6 +38,7 @@ pub struct FanStatus {
     pub fan_cooldown_seconds: Option<u32>,
     pub mist_cooldown_remaining_s: Option<u32>,
     pub fan_cooldown_remaining_s: Option<u32>,
+    pub humidity_high_persist_remaining_s: Option<u32>,
     pub mist_pulse_remaining_s: Option<u32>,
     pub corrective_fan_remaining_s: Option<u32>,
     pub scheduled_fae_on_seconds: Option<u32>,
@@ -101,21 +111,23 @@ impl ApiClient {
             .context("invalid JSON response")
     }
 
+    pub async fn request_sync(&self) -> Result<()> {
+        let url = format!("{}/sync", self.base_url);
+        self.http.post(&url).send().await?.error_for_status()?;
+        Ok(())
+    }
+
+    pub async fn resync_relays(&self) -> Result<()> {
+        let url = format!("{}/relay/resync", self.base_url);
+        self.http.post(&url).send().await?.error_for_status()?;
+        Ok(())
+    }
+
     pub async fn set_routine(&self, enabled: bool) -> Result<()> {
         let url = format!("{}/routine", self.base_url);
         self.http
             .post(&url)
             .json(&serde_json::json!({ "enabled": enabled }))
-            .send()
-            .await?
-            .error_for_status()?;
-        Ok(())
-    }
-
-    pub async fn toggle_fan(&self) -> Result<()> {
-        let url = format!("{}/fan/toggle", self.base_url);
-        self.http
-            .post(&url)
             .send()
             .await?
             .error_for_status()?;
@@ -144,13 +156,15 @@ impl ApiClient {
         Ok(())
     }
 
+    pub async fn toggle_fan(&self) -> Result<()> {
+        let url = format!("{}/fan/toggle", self.base_url);
+        self.http.post(&url).send().await?.error_for_status()?;
+        Ok(())
+    }
+
     pub async fn toggle_mist(&self) -> Result<()> {
         let url = format!("{}/mist/toggle", self.base_url);
-        self.http
-            .post(&url)
-            .send()
-            .await?
-            .error_for_status()?;
+        self.http.post(&url).send().await?.error_for_status()?;
         Ok(())
     }
 
@@ -159,6 +173,28 @@ impl ApiClient {
         self.http
             .post(&url)
             .json(&serde_json::json!({ "automation_enabled": enabled }))
+            .send()
+            .await?
+            .error_for_status()?;
+        Ok(())
+    }
+
+    pub async fn set_simulation(&self, enabled: bool) -> Result<()> {
+        let url = format!("{}/simulation", self.base_url);
+        self.http
+            .post(&url)
+            .json(&serde_json::json!({ "enabled": enabled }))
+            .send()
+            .await?
+            .error_for_status()?;
+        Ok(())
+    }
+
+    pub async fn set_simulated_humidity(&self, humidity: f32) -> Result<()> {
+        let url = format!("{}/simulation/humidity", self.base_url);
+        self.http
+            .post(&url)
+            .json(&serde_json::json!({ "humidity": humidity }))
             .send()
             .await?
             .error_for_status()?;

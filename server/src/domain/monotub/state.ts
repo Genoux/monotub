@@ -38,7 +38,13 @@ const syncEmptyDesiredFromStatus = (state: MonotubState): void => {
     manual_fan: state.desired.manual_fan ?? state.status.manual_fan ?? null,
     on_seconds: state.desired.on_seconds ?? state.status.on_seconds,
     off_seconds: state.desired.off_seconds ?? state.status.off_seconds,
-    mist: state.desired.mist ?? state.status.mist ?? null,
+    mist:
+      state.status.automation_enabled === true
+        ? state.status.automation_mist ?? state.status.mist ?? null
+        : state.desired.mist ??
+          state.status.manual_mist ??
+          state.status.mist ??
+          null,
     automation_enabled:
       state.desired.automation_enabled ??
       state.status.automation_enabled ??
@@ -155,7 +161,7 @@ export const syncScheduleTransitions = (
   receivedAt: string,
 ): void => {
   const status = state.status;
-  if (!status?.routine) {
+  if (!status?.routine || status.routine_paused) {
     state.nextTransitionAt = null;
     return;
   }
@@ -181,7 +187,7 @@ export const recomputeNextTransition = (
   state: MonotubState,
   receivedAt?: string,
 ): void => {
-  if (!state.status?.routine) {
+  if (!state.status?.routine || state.status.routine_paused) {
     state.nextTransitionAt = null;
     return;
   }
@@ -251,12 +257,12 @@ export const applyMqttMessage = (
         break;
       }
       state.status = parsed;
-      if (state.status.mist != null) {
-        state.mist = state.status.mist ? 'ON' : 'OFF';
+      if (parsed?.mist != null) {
+        state.mist = parsed.mist ? 'ON' : 'OFF';
       }
-      if (state.status.fan != null) {
-        const newFan = state.status.fan ? 'ON' : 'OFF';
-        if (!state.status.routine && newFan !== state.fan) {
+      if (parsed?.fan != null) {
+        const newFan = parsed.fan ? 'ON' : 'OFF';
+        if (!parsed.routine && newFan !== state.fan) {
           state.lastTransitionAt = receivedAt;
         }
         state.fan = newFan;

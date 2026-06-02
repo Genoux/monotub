@@ -5,6 +5,8 @@ export const monotubTopics = {
   fanState: `${TOPIC_PREFIX}/fan/state`,
   mistState: `${TOPIC_PREFIX}/mist/state`,
   status: `${TOPIC_PREFIX}/status`,
+  statusRequest: `${TOPIC_PREFIX}/status/request`,
+  relayResync: `${TOPIC_PREFIX}/relay/resync`,
   routineSet: `${TOPIC_PREFIX}/routine/set`,
   fanSet: `${TOPIC_PREFIX}/fan/set`,
   onSecondsSet: `${TOPIC_PREFIX}/fan/on_seconds/set`,
@@ -19,6 +21,8 @@ export const monotubTopics = {
   correctiveFanSet: `${TOPIC_PREFIX}/fan/corrective_seconds/set`,
   mistCooldownSet: `${TOPIC_PREFIX}/mist/cooldown_seconds/set`,
   fanCooldownSet: `${TOPIC_PREFIX}/fan/cooldown_seconds/set`,
+  simulationEnabledSet: `${TOPIC_PREFIX}/simulation/enabled/set`,
+  simulationHumiditySet: `${TOPIC_PREFIX}/simulation/humidity/set`,
   log: `${TOPIC_PREFIX}/log`,
   subscribeAll: `${TOPIC_PREFIX}/#`,
 } as const;

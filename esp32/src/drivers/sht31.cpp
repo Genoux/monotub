@@ -34,6 +34,20 @@ bool sht31Init() {
 }
 
 bool sht31Read() {
+  if (g.environment.simulationEnabled) {
+    g.environment.humidityPercent = g.environment.simulatedHumidityPercent;
+    g.environment.smoothedHumidityPercent = g.environment.simulatedHumidityPercent;
+    if (isnan(g.environment.temperatureC)) {
+      g.environment.temperatureC = 23.0F;
+    }
+    g.environment.ok = true;
+    g.environment.sampleCount = min<uint8_t>(g.environment.sampleCount + 1, 10);
+    g.environment.lastReadAt = millis();
+    Serial.printf("Env simulation: %.1f%% RH\n",
+                  g.environment.simulatedHumidityPercent);
+    return true;
+  }
+
   if (!g.environment.ok) return false;
 
   float humidity = sensor.readHumidity();
