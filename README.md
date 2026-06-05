@@ -34,10 +34,13 @@ flowchart TD
   D -->|Above 90%| I[Too wet]
   I --> I1[Fan: routine paused]
   I --> I2[Mist: OFF]
-  I --> I3{Above 90% for 180s?}
+  I --> I3{Above 90% long enough?}
   I3 -->|No| I4[Wait]
   I3 -->|Yes| I5[Fan: 15s corrective pulse]
-  I5 --> I6[Fan cooldown: 180s]
+  I5 --> I6[Fan cooldown: 120s]
+  I6 --> I7{Still above 90% and under pulse cap?}
+  I7 -->|Yes| I3
+  I7 -->|No| I4
 
   S[Simulation ON] --> S1[Use simulated RH instead of sensor RH]
   S1 --> C
@@ -49,20 +52,17 @@ flowchart TD
 
 The ESP32 is the source of truth for the relays. The server and TUI only send commands and display the latest ESP32 status.
 
-When automation is ON, the fan has two owners:
+**Automation ON (grow mode)** — one master switch for all logic:
 
-- Routine fan cycle: normal fresh-air exchange.
-- Humidity correction: emergency venting when humidity stays too high.
+- Mist: humidity rules (85–88% band).
+- Fan: routine schedule in the healthy RH band, plus corrective pulses when too wet.
+- Manual `x` / `m` are disabled; use **Automation OFF** for service.
 
-When automation is OFF:
+**Automation OFF (service mode)** — manual only:
 
-- Manual fan toggle controls fan.
-- Manual mist toggle controls mist.
-
-The mist has two modes:
-
-- Automation ON: humidity rules control mist.
-- Automation OFF: manual mist toggle controls mist.
+- Fan: `x` toggles the relay.
+- Mist: `m` toggles the relay.
+- Routine and humidity rules are paused (routine setting is saved for next grow mode).
 
 ## Humidity Bands
 
@@ -105,7 +105,7 @@ The routine fan cycle is for normal fresh-air exchange.
 Default routine:
 
 - Fan ON for `30s`
-- Fan OFF for `1200s`
+- Fan OFF for `600s`
 
 The routine only runs inside the soft humidity band:
 
@@ -127,11 +127,13 @@ High-humidity correction is separate from the normal routine.
 
 Default correction rules:
 
-- If humidity stays above `90%` for `180s`, run the fan.
+- If humidity stays above `90%`, run short corrective fan pulses.
+- Default wait is up to `90s`; more severe humidity shortens the wait.
 - Fan correction pulse length is `15s`.
-- After a correction pulse, wait `180s` before another correction pulse can start.
+- After a correction pulse, wait `120s` before another correction pulse can start.
+- Corrective fan is capped at `6` pulses per hour.
 
-So at `92%`, the fan does not run immediately. The system waits to confirm humidity is truly high, then runs a short fan pulse.
+So at `92%`, the fan does not run immediately. The system waits briefly to confirm humidity is truly high, runs a short pulse, settles, then repeats only if humidity stays too high.
 
 ## Automation OFF Rules
 

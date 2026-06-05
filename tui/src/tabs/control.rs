@@ -1,5 +1,5 @@
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
-use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::layout::{Alignment, Constraint, Layout, Rect};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, Paragraph, Wrap};
 use ratatui::Frame;
@@ -7,13 +7,18 @@ use ratatui::Frame;
 use crate::app::{App, FocusedSection};
 use crate::commands::{AppCommand, EditField};
 use crate::sync::{display_bool, format_schedule};
-use crate::telemetry::{format_automation_targets, format_humidity_band, status_stale_warning};
+use crate::telemetry::status_stale_warning;
 use crate::theme;
 use crate::time::{format_duration, seconds_since, transition_progress};
 
 pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     if app.show_help {
         render_help_overlay(frame, area);
+        return;
+    }
+
+    if app.api_error.is_some() || app.device_state.is_none() {
+        render_center_status(frame, area, app);
         return;
     }
 
@@ -24,6 +29,9 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         (area, None)
     };
 
+    let [mode_area, controls_area] =
+        Layout::vertical([Constraint::Length(1), Constraint::Fill(1)]).areas(body_area);
+
     let [fan_area, mist_area, sensor_area, auto_area, device_area] = Layout::vertical([
         Constraint::Fill(1),
         Constraint::Fill(1),
@@ -31,8 +39,9 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         Constraint::Fill(1),
         Constraint::Fill(1),
     ])
-    .areas(body_area);
+    .areas(controls_area);
 
+    render_mode_bar(frame, mode_area, app);
     render_fan(frame, fan_area, app);
     render_mist(frame, mist_area, app);
     render_sensor(frame, sensor_area, app);
@@ -52,7 +61,6 @@ pub fn handle_key(key: KeyEvent, app: &App) -> Option<AppCommand> {
     match app.focused_section {
         FocusedSection::Fan => match key.code {
             KeyCode::Char('x') => Some(AppCommand::ToggleFan),
-            KeyCode::Char('r') => Some(AppCommand::ToggleRoutine),
             KeyCode::Char('o') => Some(AppCommand::StartEdit(EditField::OnSeconds)),
             KeyCode::Char('f') => Some(AppCommand::StartEdit(EditField::OffSeconds)),
             _ => None,
@@ -94,11 +102,74 @@ fn section_block(title: &'static str, focused: bool) -> Block<'static> {
     }
 }
 
+fn render_center_status(frame: &mut Frame, area: Rect, app: &App) {
+    let center = centered_area(area, 3);
+    let lines = match app.api_error.as_deref() {
+        Some(_) => vec![
+            Line::from(Span::styled("( ͡° ͜ʖ ͡°)", theme::error())),
+            Line::from(""),
+            Line::from(Span::styled("Server unreachable", theme::error())),
+            Line::from(Span::styled(
+                "waiting for http://localhost:8001",
+                theme::muted(),
+            )),
+        ],
+        None => vec![Line::from(Span::styled(
+            "waiting for server…",
+            theme::muted(),
+        ))],
+    };
+
+    frame.render_widget(
+        Paragraph::new(lines)
+            .alignment(Alignment::Center)
+            .wrap(Wrap { trim: true }),
+        center,
+    );
+}
+
+fn centered_area(area: Rect, height: u16) -> Rect {
+    let height = height.min(area.height);
+    Rect {
+        x: area.x,
+        y: area.y + area.height.saturating_sub(height) / 2,
+        width: area.width,
+        height,
+    }
+}
+
+fn render_mode_bar(frame: &mut Frame, area: Rect, app: &App) {
+    let automation_on = app
+        .device_state
+        .as_ref()
+        .map(automation_enabled)
+        .unwrap_or(false);
+    let (mode, detail, style) = if automation_on {
+        ("AUTO MODE", "humidity + routine", theme::on())
+    } else {
+        ("MANUAL MODE", "service controls", theme::accent_bright())
+    };
+
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(mode, style),
+            Span::styled("  ", theme::muted()),
+            Span::styled(detail, theme::muted()),
+        ])),
+        area,
+    );
+}
+
 // ── Fan ───────────────────────────────────────────────────────────────────────
 
 fn render_fan(frame: &mut Frame, area: Rect, app: &App) {
     let focused = app.focused_section == FocusedSection::Fan;
-    let block = section_block("Fan Relay", focused);
+    let automation_on = app
+        .device_state
+        .as_ref()
+        .map(automation_enabled)
+        .unwrap_or(false);
+    let block = section_block("Fan", focused);
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
@@ -110,6 +181,20 @@ fn render_fan(frame: &mut Frame, area: Rect, app: &App) {
         return;
     };
 
+    let lines = if automation_on {
+        fan_auto_lines(state, app, inner.width)
+    } else {
+        fan_manual_lines(state, app)
+    };
+
+    frame.render_widget(Paragraph::new(lines), inner);
+}
+
+fn fan_auto_lines<'a>(
+    state: &'a crate::api::DeviceState,
+    app: &'a App,
+    inner_width: u16,
+) -> Vec<Line<'a>> {
     let status = state.status.as_ref();
     let fan_label = state.fan.as_deref().unwrap_or("?");
     let fan_reason = status
@@ -134,17 +219,6 @@ fn render_fan(frame: &mut Frame, area: Rect, app: &App) {
         .map(|s| s.routine)
         .or(state.desired.routine)
         .unwrap_or(false);
-    let automation_owns_fan = status.and_then(|s| s.automation_enabled).unwrap_or(false);
-    let manual_fan = display_bool(
-        status.and_then(|s| s.manual_fan),
-        if automation_owns_fan {
-            None
-        } else {
-            state.desired.manual_fan
-        },
-        "ON",
-        "OFF",
-    );
     let routine_paused = status.and_then(|s| s.routine_paused).unwrap_or(false);
     let pause_reason = status
         .and_then(|s| s.routine_pause_reason.as_deref())
@@ -179,29 +253,15 @@ fn render_fan(frame: &mut Frame, area: Rect, app: &App) {
         ]));
     }
 
-    if automation_owns_fan {
-        lines.push(Line::from(vec![
-            Span::styled(label("Manual"), theme::muted()),
-            Span::styled("disabled while automation is ON", theme::muted()),
-        ]));
-    } else {
-        lines.push(Line::from(vec![
-            Span::styled(label("Manual"), theme::muted()),
-            Span::styled(manual_fan.text.clone(), manual_fan.style()),
-        ]));
-    }
-
-    // Cycle progress (only when routine is on and we have transition data)
     if let Some(progress) = transition_progress(state) {
         lines.push(progress_bar_line(
             progress.ratio,
             progress.remaining_seconds,
             progress.next_label,
-            inner.width.saturating_sub(2),
+            inner_width.saturating_sub(2),
         ));
     }
 
-    // Schedule row or edit hint
     match app.edit_field {
         Some(EditField::OnSeconds) => {
             lines.push(Line::from(vec![
@@ -227,21 +287,45 @@ fn render_fan(frame: &mut Frame, area: Rect, app: &App) {
         }
     }
 
+    append_fan_status_lines(&mut lines, state, app);
+    lines
+}
+
+fn fan_manual_lines<'a>(state: &'a crate::api::DeviceState, app: &'a App) -> Vec<Line<'a>> {
+    let fan_label = state.fan.as_deref().unwrap_or("?");
+
+    let mut lines = vec![
+        Line::from(vec![
+            Span::styled(label("State"), theme::muted()),
+            Span::styled(fan_label, theme::fan(state.fan.as_deref())),
+        ]),
+    ];
+    append_fan_status_lines(&mut lines, state, app);
+    lines
+}
+
+fn append_fan_status_lines<'a>(
+    lines: &mut Vec<Line<'a>>,
+    state: &'a crate::api::DeviceState,
+    app: &'a App,
+) {
     if let Some(warn) = status_stale_warning(state) {
         lines.push(Line::from(Span::styled(warn, theme::warn())));
     }
-
     if let Some(err) = app.api_error.as_deref() {
-        lines.push(Line::from(Span::styled(err, theme::error())));
+        lines.push(Line::from(Span::styled(err.to_string(), theme::error())));
     }
-
-    frame.render_widget(Paragraph::new(lines), inner);
 }
 
 // ── Mist ──────────────────────────────────────────────────────────────────────
 
 fn render_mist(frame: &mut Frame, area: Rect, app: &App) {
     let focused = app.focused_section == FocusedSection::Mist;
+    let automation_on = app
+        .device_state
+        .as_ref()
+        .map(automation_enabled)
+        .unwrap_or(false);
     let block = section_block("Mist", focused);
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -249,26 +333,19 @@ fn render_mist(frame: &mut Frame, area: Rect, app: &App) {
     let state = app.device_state.as_ref();
     let status = state.and_then(|s| s.status.as_ref());
 
-    let automation_owns_mist = status.and_then(|s| s.automation_enabled).unwrap_or(false);
     let reported_mist = status.and_then(|s| {
-        if automation_owns_mist {
+        if automation_on {
             s.automation_mist.or(s.mist)
         } else {
             s.manual_mist.or(s.mist)
         }
     });
-    let desired_mist = if automation_owns_mist {
+    let desired_mist = if automation_on {
         None
     } else {
         state.and_then(|s| s.desired.mist)
     };
     let mist = display_bool(reported_mist, desired_mist, "ON", "OFF");
-    let mist_reason = status
-        .and_then(|s| s.mist_reason.as_deref())
-        .filter(|r| *r != "off")
-        .map(|r| format!("  ·  {r}"))
-        .unwrap_or_default();
-
     let pulse = status
         .and_then(|s| s.mist_pulse_remaining_s)
         .filter(|&s| s > 0)
@@ -278,21 +355,15 @@ fn render_mist(frame: &mut Frame, area: Rect, app: &App) {
     let mut lines = vec![Line::from(vec![
         Span::styled(label("State"), theme::muted()),
         Span::styled(mist.text.clone(), mist.style()),
-        Span::styled(mist_reason, theme::muted()),
     ])];
 
-    if !pulse.is_empty() {
-        lines.push(Line::from(vec![
-            Span::styled(label("Pulse"), theme::muted()),
-            Span::styled(pulse, theme::accent()),
-        ]));
-    }
-
-    if automation_owns_mist {
-        lines.push(Line::from(vec![
-            Span::styled(label("Manual"), theme::muted()),
-            Span::styled("disabled while automation is ON", theme::muted()),
-        ]));
+    if automation_on {
+        if !pulse.is_empty() {
+            lines.push(Line::from(vec![
+                Span::styled(label("Pulse"), theme::muted()),
+                Span::styled(pulse, theme::accent()),
+            ]));
+        }
     }
 
     if let Some(state) = state {
@@ -322,36 +393,34 @@ fn render_automation(frame: &mut Frame, area: Rect, app: &App) {
         "OFF",
     );
 
-    let cooldowns = {
-        let high = status
-            .and_then(|s| s.humidity_high_persist_remaining_s)
-            .filter(|&s| s > 0)
-            .map(|s| format!("fan in {}", format_duration(s as i64)));
-        let fan_cd = status
-            .and_then(|s| s.fan_cooldown_remaining_s)
-            .filter(|&s| s > 0)
-            .map(|s| format!("fan CD {}", format_duration(s as i64)))
-            .unwrap_or_else(|| "fan CD 0s".into());
-        high.map(|high| format!("{high}  ·  {fan_cd}"))
-            .unwrap_or(fan_cd)
-    };
-
+    let automation_on = state.map(automation_enabled).unwrap_or(false);
     let mut lines = vec![
         Line::from(vec![
             Span::styled(label("State"), theme::muted()),
             Span::styled(auto.text.clone(), auto.style()),
-            Span::raw("  "),
-            Span::styled(format_humidity_band(status), theme::muted()),
-        ]),
-        Line::from(vec![
-            Span::styled(label("Targets"), theme::muted()),
-            Span::styled(format_automation_targets(status), theme::muted()),
-        ]),
-        Line::from(vec![
-            Span::styled(label("Cooldown"), theme::muted()),
-            Span::styled(cooldowns, theme::muted()),
         ]),
     ];
+
+    if automation_on {
+        lines.extend([
+            Line::from(vec![
+                Span::styled(label("RH"), theme::muted()),
+                Span::styled(format_rh_rule(status), theme::muted()),
+            ]),
+            Line::from(vec![
+                Span::styled(label("Mist"), theme::muted()),
+                Span::styled(format_mist_rule(status), theme::muted()),
+            ]),
+            Line::from(vec![
+                Span::styled(label("Fan"), theme::muted()),
+                Span::styled(format_fan_rule(status), theme::muted()),
+            ]),
+            Line::from(vec![
+                Span::styled(label("Vent"), theme::muted()),
+                Span::styled(format_vent_rule(status), theme::muted()),
+            ]),
+        ]);
+    }
 
     if let Some(state) = state {
         if let Some(warn) = status_stale_warning(state) {
@@ -371,9 +440,18 @@ fn render_sensor(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_widget(block, area);
 
     let status = app.device_state.as_ref().and_then(|s| s.status.as_ref());
+    let simulation_on = status.and_then(|s| s.simulation_enabled).unwrap_or(false);
     let sensor_ok = status.and_then(|s| s.environment_ok);
 
-    let humidity = status.and_then(|s| s.humidity_percent);
+    let humidity = if simulation_on {
+        status.and_then(|s| {
+            s.humidity_percent
+                .or(s.simulated_humidity_percent)
+                .or(s.smoothed_humidity_percent)
+        })
+    } else {
+        status.and_then(|s| s.humidity_percent)
+    };
     let temperature = status.and_then(|s| s.temperature_c);
     let rh = humidity
         .map(|h| format!("{h:.1}%"))
@@ -381,20 +459,24 @@ fn render_sensor(frame: &mut Frame, area: Rect, app: &App) {
     let temp = temperature
         .map(|t| format!("{t:.1}°C"))
         .unwrap_or_else(|| "—".into());
-    let smoothed = status
-        .and_then(|s| s.smoothed_humidity_percent)
-        .map(|h| format!("smoothed {h:.1}%"))
-        .unwrap_or_else(|| "smoothed —".into());
-    let simulation = status
-        .and_then(|s| s.simulation_enabled)
-        .filter(|enabled| *enabled)
-        .map(|_| {
-            status
-                .and_then(|s| s.simulated_humidity_percent)
-                .map(|h| format!("SIM {h:.0}%"))
-                .unwrap_or_else(|| "SIM".into())
-        })
-        .unwrap_or_default();
+    let smoothed = if simulation_on {
+        humidity
+            .map(|h| format!("sim {h:.1}%"))
+            .unwrap_or_else(|| "sim —".into())
+    } else {
+        status
+            .and_then(|s| s.smoothed_humidity_percent)
+            .map(|h| format!("smoothed {h:.1}%"))
+            .unwrap_or_else(|| "smoothed —".into())
+    };
+    let (status_label, status_style) = if simulation_on {
+        ("SIM", theme::warn())
+    } else {
+        (
+            sensor_status_label(sensor_ok, humidity, temperature),
+            sensor_status_style(sensor_ok, humidity, temperature),
+        )
+    };
 
     let mut lines = vec![
         Line::from(vec![
@@ -405,16 +487,13 @@ fn render_sensor(frame: &mut Frame, area: Rect, app: &App) {
         ]),
         Line::from(vec![
             Span::styled(label("Status"), theme::muted()),
-            Span::styled(
-                sensor_status_label(sensor_ok, humidity, temperature),
-                sensor_status_style(sensor_ok, humidity, temperature),
-            ),
+            Span::styled(status_label, status_style),
             Span::styled("   ", theme::muted()),
             Span::styled(smoothed, theme::muted()),
-            Span::styled("   ", theme::muted()),
-            Span::styled(simulation, theme::warn()),
         ]),
     ];
+
+   
 
     if status.is_none() {
         if let Some(state) = app.device_state.as_ref() {
@@ -514,21 +593,22 @@ fn render_help_overlay(frame: &mut Frame, area: Rect) {
     let lines = vec![
         Line::from(Span::styled("monotub controls", theme::accent_bright())),
         Line::from(""),
-        Line::from(Span::styled("Fan section", theme::muted())),
-        help_line("x", "toggle manual fan when automation is OFF"),
-        help_line("r", "toggle routine"),
-        help_line("o", "edit fan ON seconds"),
-        help_line("f", "edit fan OFF seconds"),
+        Line::from(Span::styled("Automation (master)", theme::muted())),
+        help_line("a", "ON = grow mode (RH mist, routine, fan pulses)"),
+        help_line("", "OFF = manual fan x and mist m only"),
         Line::from(""),
-        Line::from(Span::styled("Mist section", theme::muted())),
-        help_line("m", "toggle mist"),
+        Line::from(Span::styled("Fan — Auto view (automation ON)", theme::muted())),
+        help_line("o / f", "edit routine ON/OFF seconds"),
+        Line::from(""),
+        Line::from(Span::styled("Fan — Manual view (automation OFF)", theme::muted())),
+        help_line("x", "toggle fan relay"),
+        Line::from(""),
+        Line::from(Span::styled("Mist — Manual view (automation OFF)", theme::muted())),
+        help_line("m", "toggle mist relay"),
         Line::from(""),
         Line::from(Span::styled("Sensor section", theme::muted())),
         help_line("s", "toggle humidity simulation"),
         help_line("+ / -", "adjust simulated RH"),
-        Line::from(""),
-        Line::from(Span::styled("Automation section", theme::muted())),
-        help_line("a", "toggle automation"),
         Line::from(""),
         Line::from(Span::styled("Global", theme::muted())),
         help_line("Tab / Shift+Tab", "navigate sections"),
@@ -549,6 +629,14 @@ fn render_help_overlay(frame: &mut Frame, area: Rect) {
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
+
+fn automation_enabled(state: &crate::api::DeviceState) -> bool {
+    state
+        .desired
+        .automation_enabled
+        .or_else(|| state.status.as_ref().and_then(|s| s.automation_enabled))
+        .unwrap_or(false)
+}
 
 fn label(text: &str) -> String {
     format!("{:<10}", text)
@@ -578,6 +666,59 @@ fn sensor_status_style(
         (Some(false), true) => theme::error(),
         (None, _) => theme::muted(),
     }
+}
+
+fn format_rh_rule(status: Option<&crate::api::FanStatus>) -> String {
+    match (
+        status.and_then(|s| s.humidity_low_threshold),
+        status.and_then(|s| s.humidity_high_threshold),
+    ) {
+        (Some(low), Some(high)) => format!("{low:.0}-{high:.0}%"),
+        _ => "—".into(),
+    }
+}
+
+fn format_mist_rule(status: Option<&crate::api::FanStatus>) -> String {
+    match (
+        status.and_then(|s| s.humidity_low_threshold),
+        status.and_then(|s| s.humidity_soft_high_threshold),
+    ) {
+        (Some(low), Some(soft_high)) => format!("ON <{low:.0}%  ·  OFF >{soft_high:.0}%"),
+        _ => "auto by RH".into(),
+    }
+}
+
+fn format_fan_rule(status: Option<&crate::api::FanStatus>) -> String {
+    match (
+        status.and_then(|s| s.humidity_soft_low_threshold),
+        status.and_then(|s| s.humidity_soft_high_threshold),
+        status.and_then(|s| s.humidity_high_threshold),
+    ) {
+        (Some(soft_low), Some(soft_high), Some(high)) => {
+            format!("routine {soft_low:.0}-{soft_high:.0}%  ·  vent >{high:.0}%")
+        }
+        _ => "routine + high RH vent".into(),
+    }
+}
+
+fn format_vent_rule(status: Option<&crate::api::FanStatus>) -> String {
+    let fan_pulse = status
+        .and_then(|s| s.corrective_fan_seconds)
+        .map(|s| format!("{s}s pulse"))
+        .unwrap_or_else(|| "—".into());
+    let fan_cd = status
+        .and_then(|s| s.fan_cooldown_remaining_s)
+        .filter(|&s| s > 0)
+        .map(|s| format_duration(s as i64))
+        .unwrap_or_else(|| "0s".into());
+    let pulses = match (
+        status.and_then(|s| s.corrective_fan_pulse_count),
+        status.and_then(|s| s.corrective_fan_pulse_limit),
+    ) {
+        (Some(count), Some(limit)) => format!("{count}/{limit} used this hour"),
+        _ => "— used this hour".into(),
+    };
+    format!("{fan_pulse}  ·  cooldown {fan_cd}  ·  {pulses}")
 }
 
 fn format_pause_reason(reason: &str) -> &'static str {

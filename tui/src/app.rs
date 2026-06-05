@@ -44,7 +44,7 @@ impl FocusedSection {
 
     pub fn commands(self) -> &'static str {
         match self {
-            Self::Fan => "x manual fan  r routine  o on-sec  f off-sec",
+            Self::Fan => "x manual fan  o on-sec  f off-sec",
             Self::Mist => "m manual mist",
             Self::Automation => "a toggle auto",
             Self::Device => "y resync relays",
@@ -83,7 +83,6 @@ enum StateUpdate {
 }
 
 enum AppAction {
-    SetRoutine(bool),
     ToggleFan,
     ToggleMist,
     SetAutomation(bool),
@@ -172,6 +171,15 @@ impl App {
             if key.kind != KeyEventKind::Press {
                 return Ok(());
             }
+
+            if self.api_error.is_some() {
+                if self.handle_global_key(key) {
+                    return Ok(());
+                }
+                self.cancel_edit();
+                return Ok(());
+            }
+
             if self.edit_field.is_some() {
                 if let Some(command) = tabs::handle_key(key, self) {
                     self.apply_command(command);
@@ -190,7 +198,6 @@ impl App {
 
     fn apply_command(&mut self, command: AppCommand) {
         match command {
-            AppCommand::ToggleRoutine => self.toggle_routine(),
             AppCommand::ToggleFan => self.toggle_fan(),
             AppCommand::ToggleMist => self.toggle_mist(),
             AppCommand::ToggleAutomation => self.toggle_automation(),
@@ -273,24 +280,6 @@ impl App {
         self.run_action(action);
     }
 
-    pub fn toggle_routine(&mut self) {
-        let enabled = self
-            .device_state
-            .as_ref()
-            .and_then(|s| {
-                s.desired
-                    .routine
-                    .or_else(|| s.status.as_ref().map(|st| st.routine))
-            })
-            .map(|routine| !routine)
-            .unwrap_or(true);
-        self.push_log(format!(
-            "Set routine {}",
-            if enabled { "ON" } else { "OFF" }
-        ));
-        self.run_action(AppAction::SetRoutine(enabled));
-    }
-
     pub fn toggle_fan(&mut self) {
         let automation_enabled = self
             .device_state
@@ -304,7 +293,7 @@ impl App {
             })
             .unwrap_or(false);
         if automation_enabled {
-            self.push_log("Fan is controlled by automation; turn automation OFF to use manual fan");
+            self.push_log("Grow mode: fan is automatic — turn automation OFF, then use x");
             return;
         }
         self.push_log("Toggle fan");
@@ -325,7 +314,7 @@ impl App {
             .unwrap_or(false);
         if automation_enabled {
             self.push_log(
-                "Mist is controlled by automation; turn automation OFF to use manual mist",
+                "Grow mode: mist is automatic — turn automation OFF, then use m",
             );
             return;
         }
@@ -373,6 +362,9 @@ impl App {
             "Set simulation {}",
             if enabled { "ON" } else { "OFF" }
         ));
+        if self.focused_section != FocusedSection::Sensor {
+            self.push_log("Tip: Tab to Sensor section before pressing s");
+        }
         self.run_action(AppAction::SetSimulation(enabled));
     }
 
@@ -451,7 +443,6 @@ impl App {
         let tx = self.state_tx.clone();
         tokio::spawn(async move {
             let mutation = match action {
-                AppAction::SetRoutine(enabled) => api.set_routine(enabled).await,
                 AppAction::ToggleFan => api.toggle_fan().await,
                 AppAction::ToggleMist => api.toggle_mist().await,
                 AppAction::SetAutomation(enabled) => api.set_automation(enabled).await,

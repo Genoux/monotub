@@ -15,7 +15,8 @@ constexpr uint8_t RELAY_OFF_LEVEL = HIGH;
 // SHT31 I2C
 #define SHT31_SDA_PIN  21
 #define SHT31_SCL_PIN  22
-#define SHT31_I2C_ADDR 0x44
+#define SHT31_I2C_ADDR     0x44
+#define SHT31_I2C_ADDR_ALT 0x45
 
 // Relay NVS defaults — assume OFF (physical relay is de-energised on unknown state).
 constexpr bool DEFAULT_RELAY_FAN_ON  = false;
@@ -23,7 +24,7 @@ constexpr bool DEFAULT_RELAY_MIST_ON = false;
 
 // Fan routine defaults
 constexpr uint32_t DEFAULT_ON_SECONDS = 30;
-constexpr uint32_t DEFAULT_OFF_SECONDS = 1200;
+constexpr uint32_t DEFAULT_OFF_SECONDS = 600;
 constexpr bool DEFAULT_ROUTINE_ENABLED = true;
 
 // Humidity automation defaults. Automation adds moisture when dry and vents when wet.
@@ -33,11 +34,19 @@ constexpr float DEFAULT_RH_HIGH_PERCENT = 90.0F;
 constexpr float RH_SOFT_LOW_OFFSET_PERCENT = 1.0F;
 constexpr float RH_SOFT_HIGH_OFFSET_PERCENT = 2.0F;
 constexpr uint32_t DEFAULT_RH_LOW_PERSIST_SECONDS = 180;
-constexpr uint32_t DEFAULT_RH_HIGH_PERSIST_SECONDS = 180;
+constexpr uint32_t DEFAULT_RH_HIGH_PERSIST_SECONDS = 90;
 constexpr uint32_t DEFAULT_MIST_PULSE_SECONDS = 15;
 constexpr uint32_t DEFAULT_CORRECTIVE_FAN_SECONDS = 15;
 constexpr uint32_t DEFAULT_MIST_COOLDOWN_SECONDS = 600;
-constexpr uint32_t DEFAULT_FAN_COOLDOWN_SECONDS = 180;
+constexpr uint32_t DEFAULT_FAN_COOLDOWN_SECONDS = 120;
+constexpr uint32_t HIGH_RH_SEVERE_PERSIST_SECONDS = 60;
+constexpr uint32_t HIGH_RH_CRITICAL_PERSIST_SECONDS = 30;
+constexpr uint8_t MAX_CORRECTIVE_FAN_PULSES_PER_HOUR = 6;
+constexpr uint32_t CORRECTIVE_FAN_PULSE_WINDOW_SECONDS = 3600;
+constexpr uint32_t SETTINGS_VERSION = 2;
+constexpr uint32_t LEGACY_DEFAULT_OFF_SECONDS = 1200;
+constexpr uint32_t LEGACY_DEFAULT_RH_HIGH_PERSIST_SECONDS = 180;
+constexpr uint32_t LEGACY_DEFAULT_FAN_COOLDOWN_SECONDS = 180;
 
 // MQTT topics
 #define T_LOG         "monotub/log"
@@ -67,6 +76,8 @@ constexpr uint32_t DEFAULT_FAN_COOLDOWN_SECONDS = 180;
 
 // Intervals
 constexpr uint32_t STATUS_INTERVAL_MS = 10000;
+constexpr uint16_t MQTT_CLIENT_BUFFER_BYTES = 2048;
+constexpr size_t STATUS_JSON_BYTES = 2048;
 constexpr uint32_t ENV_INTERVAL_MS = 5000;
 // Fan schedule must tick often enough for short ON windows (e.g. 30s).
 constexpr uint32_t CONTROLLER_INTERVAL_MS = 1000;

@@ -112,13 +112,21 @@ export const registerFanControlHttpRoutes = (
 	});
 
 	app.post("/routine", (req: Request, res: Response) => {
+		const state = getState();
+		const automationEnabled =
+			state.desired.automation_enabled ?? state.status?.automation_enabled ?? false;
+		if (automationEnabled) {
+			res.status(409).json({ error: "routine is controlled by automation" });
+			return;
+		}
+
 		const enabled = req.body?.enabled;
 		if (typeof enabled !== "boolean") {
 			res.status(400).json({ error: "body.enabled must be boolean" });
 			return;
 		}
 		publish(monotubTopics.routineSet, enabled ? "ON" : "OFF");
-		setDesiredRoutine(getState(), enabled);
+		setDesiredRoutine(state, enabled);
 		res.json({ ok: true });
 	});
 
@@ -218,7 +226,11 @@ export const registerFanControlHttpRoutes = (
 				publish(automationFieldTopics[field], message);
 			},
 		);
-		setDesiredAutomationSettings(getState(), patch);
+		const state = getState();
+		setDesiredAutomationSettings(state, patch);
+		if (patch.automation_enabled === true) {
+			setDesiredRoutine(state, true);
+		}
 		res.json({ ok: true });
 	});
 };

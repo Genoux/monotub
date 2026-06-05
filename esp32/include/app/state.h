@@ -61,13 +61,14 @@ struct RuntimeState {
   uint32_t highHumiditySince = 0;
   uint32_t correctiveFanUntil = 0;
   uint32_t lastCorrectiveFanAt = 0;
+  uint32_t correctiveFanPulseWindowStartedAt = 0;
+  uint8_t correctiveFanPulseCount = 0;
   uint32_t lastStatusAt = 0;
   uint32_t lastControllerAt = 0;
   uint32_t lastMqttRetry = 0;
   uint32_t lastWifiRetry = 0;
   uint32_t relayCommandSuppressUntil = 0;
   uint32_t relayBootSuppressUntil = 0;
-  uint32_t fanCommandLockUntil = 0;
   uint32_t lastRelayCommandAt = 0;
   bool fanRoutinePausedByHumidity = false;
 };

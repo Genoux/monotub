@@ -8,6 +8,11 @@ use crate::tabs;
 use crate::theme;
 
 pub fn render(frame: &mut Frame, app: &App) {
+    if (app.api_error.is_some() || app.device_state.is_none()) && !app.show_help {
+        tabs::render(frame, app, frame.area());
+        return;
+    }
+
     let [content_area, footer_area] =
         Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).areas(frame.area());
 

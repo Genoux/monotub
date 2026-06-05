@@ -142,6 +142,15 @@ ActuatorChanges controllerTick() {
 }
 
 ActuatorChanges controllerSetRoutineEnabled(bool enabled) {
+  if (g.humiditySettings.automationEnabled) {
+    if (!g.fanSettings.routineEnabled) {
+      g.fanSettings.routineEnabled = true;
+      prefsSave();
+    }
+    syncFanRoutinePauseState();
+    return controllerApplyOutputs();
+  }
+
   if (enabled == g.fanSettings.routineEnabled) return {};
 
   g.fanSettings.routineEnabled = enabled;
@@ -166,9 +175,14 @@ ActuatorChanges controllerSetAutomationEnabled(bool enabled) {
   }
 
   g.humiditySettings.automationEnabled = enabled;
+  if (enabled) {
+    g.fanSettings.routineEnabled = true;
+  }
   if (!enabled) {
     g.runtime.correctiveFanUntil = 0;
     g.runtime.highHumiditySince = 0;
+    g.runtime.correctiveFanPulseWindowStartedAt = 0;
+    g.runtime.correctiveFanPulseCount = 0;
   }
   syncFanRoutinePauseState();
   prefsSave();

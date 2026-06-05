@@ -43,6 +43,8 @@ export type FanStatus = {
   humidity_high_persist_seconds?: number;
   mist_pulse_seconds?: number;
   corrective_fan_seconds?: number;
+  corrective_fan_pulse_count?: number;
+  corrective_fan_pulse_limit?: number;
   mist_cooldown_seconds?: number;
   fan_cooldown_seconds?: number;
   mist_cooldown_remaining_s?: number;

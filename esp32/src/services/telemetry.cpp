@@ -63,6 +63,8 @@ void telemetryWriteStatus(JsonDocument& doc) {
   doc["humidity_low_persist_seconds"] = g.humiditySettings.lowPersistSeconds;
   doc["humidity_high_persist_seconds"] = g.humiditySettings.highPersistSeconds;
   doc["corrective_fan_seconds"] = g.humiditySettings.fanPulseSeconds;
+  doc["corrective_fan_pulse_count"] = humidityCorrectiveFanPulseCount();
+  doc["corrective_fan_pulse_limit"] = humidityCorrectiveFanPulseLimit();
   doc["mist_cooldown_seconds"] = g.humiditySettings.mistCooldownSeconds;
   doc["fan_cooldown_seconds"] = g.humiditySettings.fanCooldownSeconds;
   doc["mist_cooldown_remaining_s"] = humidityMistCooldownRemainingSeconds();

@@ -34,6 +34,8 @@ pub struct FanStatus {
     pub humidity_high_persist_seconds: Option<u32>,
     pub mist_pulse_seconds: Option<u32>,
     pub corrective_fan_seconds: Option<u32>,
+    pub corrective_fan_pulse_count: Option<u32>,
+    pub corrective_fan_pulse_limit: Option<u32>,
     pub mist_cooldown_seconds: Option<u32>,
     pub fan_cooldown_seconds: Option<u32>,
     pub mist_cooldown_remaining_s: Option<u32>,
@@ -120,17 +122,6 @@ impl ApiClient {
     pub async fn resync_relays(&self) -> Result<()> {
         let url = format!("{}/relay/resync", self.base_url);
         self.http.post(&url).send().await?.error_for_status()?;
-        Ok(())
-    }
-
-    pub async fn set_routine(&self, enabled: bool) -> Result<()> {
-        let url = format!("{}/routine", self.base_url);
-        self.http
-            .post(&url)
-            .json(&serde_json::json!({ "enabled": enabled }))
-            .send()
-            .await?
-            .error_for_status()?;
         Ok(())
     }
 
@@ -247,11 +238,10 @@ mod tests {
 
     #[tokio::test]
     #[ignore = "requires running mqtt-server"]
-    async fn post_routine_round_trip() {
+    async fn post_schedule_round_trip() {
         let base =
             std::env::var("MONOTUB_API_URL").unwrap_or_else(|_| "http://localhost:8001".into());
         let client = ApiClient::new(base);
-        client.set_routine(true).await.expect("set routine on");
         client.set_on_seconds(15).await.expect("set on seconds");
         client.set_off_seconds(20).await.expect("set off seconds");
         let state = client.fetch_state().await.expect("fetch state");

@@ -6,7 +6,6 @@ pub enum EditField {
 
 #[derive(Debug, Clone, Copy)]
 pub enum AppCommand {
-    ToggleRoutine,
     ToggleFan,
     ToggleMist,
     ToggleAutomation,

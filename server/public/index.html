@@ -162,11 +162,6 @@
     </section>
 
     <section class="card controls">
-      <div class="toggle-row">
-        <button class="success" data-action="routine-on">Routine ON</button>
-        <button class="danger"  data-action="routine-off">Routine OFF</button>
-      </div>
-
       <div class="field">
         <label for="on-seconds">Fan ON duration (seconds)</label>
         <div class="field-row">
@@ -322,8 +317,6 @@
       const action = target.dataset.action;
 
       switch (action) {
-        case 'routine-on':  return post('/routine', { enabled: true });
-        case 'routine-off': return post('/routine', { enabled: false });
         case 'set-on': {
           const seconds = Number($('on-seconds').value);
           return post('/on-seconds', { seconds });

@@ -10,6 +10,7 @@ Preferences store;
 void prefsLoad() {
   store.begin("monotub", true);
   const bool seeded = store.getBool("relay_seeded", false);
+  const uint32_t settingsVersion = store.getUInt("set_ver", 0);
   g.fanSettings.scheduledOnSeconds =
       store.getUInt("on_sec", DEFAULT_ON_SECONDS);
   g.fanSettings.scheduledOffSeconds =
@@ -54,6 +55,33 @@ void prefsLoad() {
   g.actuators.fanOn = false;
   g.actuators.mistOn = false;
   store.end();
+
+  if (settingsVersion < SETTINGS_VERSION) {
+    bool migrated = false;
+    if (g.fanSettings.scheduledOffSeconds == LEGACY_DEFAULT_OFF_SECONDS) {
+      g.fanSettings.scheduledOffSeconds = DEFAULT_OFF_SECONDS;
+      migrated = true;
+    }
+    if (g.humiditySettings.highPersistSeconds ==
+        LEGACY_DEFAULT_RH_HIGH_PERSIST_SECONDS) {
+      g.humiditySettings.highPersistSeconds =
+          DEFAULT_RH_HIGH_PERSIST_SECONDS;
+      migrated = true;
+    }
+    if (g.humiditySettings.fanCooldownSeconds ==
+        LEGACY_DEFAULT_FAN_COOLDOWN_SECONDS) {
+      g.humiditySettings.fanCooldownSeconds = DEFAULT_FAN_COOLDOWN_SECONDS;
+      migrated = true;
+    }
+    store.begin("monotub", false);
+    if (migrated) {
+      store.putUInt("off_sec", g.fanSettings.scheduledOffSeconds);
+      store.putUInt("high_persist", g.humiditySettings.highPersistSeconds);
+      store.putUInt("fan_cd", g.humiditySettings.fanCooldownSeconds);
+    }
+    store.putUInt("set_ver", SETTINGS_VERSION);
+    store.end();
+  }
 }
 
 void prefsSaveRelayState() {
@@ -91,6 +119,7 @@ void prefsSave() {
   store.putUInt("fan_pulse", g.humiditySettings.fanPulseSeconds);
   store.putUInt("mist_cd", g.humiditySettings.mistCooldownSeconds);
   store.putUInt("fan_cd", g.humiditySettings.fanCooldownSeconds);
+  store.putUInt("set_ver", SETTINGS_VERSION);
   store.putBool("fan_manual", g.actuators.manualFanOn);
   store.putBool("mist_manual", g.actuators.manualMistOn);
   store.end();

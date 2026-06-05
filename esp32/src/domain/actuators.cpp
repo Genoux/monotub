@@ -7,7 +7,6 @@
 
 namespace {
 constexpr uint32_t MIN_RELAY_COMMAND_GAP_MS = 800;
-constexpr uint32_t RELAY_COMMAND_LOCK_MS = 5000;
 
 bool reconnectSuppressActive() {
   return millis() < g.runtime.relayCommandSuppressUntil;
@@ -15,16 +14,6 @@ bool reconnectSuppressActive() {
 
 bool relayCommandGapElapsed() {
   return millis() - g.runtime.lastRelayCommandAt >= MIN_RELAY_COMMAND_GAP_MS;
-}
-
-bool fanCommandBlocked() {
-  return millis() < g.runtime.fanCommandLockUntil || reconnectSuppressActive() ||
-         !relayCommandGapElapsed();
-}
-
-void lockFanAfterCommand() {
-  g.runtime.fanCommandLockUntil = millis() + RELAY_COMMAND_LOCK_MS;
-  g.runtime.lastRelayCommandAt = millis();
 }
 
 bool setRelayState(uint8_t pin, bool on) {
@@ -41,9 +30,8 @@ bool setRelayState(uint8_t pin, bool on) {
 ActuatorChanges actuatorsApply(bool fanOn, bool mistOn) {
   ActuatorChanges changes;
 
-  if (fanOn != g.actuators.fanOn && !fanCommandBlocked()) {
+  if (fanOn != g.actuators.fanOn) {
     if (setRelayState(FAN_RELAY_PIN, fanOn)) {
-      lockFanAfterCommand();
       g.actuators.fanOn = fanOn;
       prefsSaveRelayState();
       Serial.printf("Fan: %s (%s)\n", fanOn ? "ON" : "OFF",

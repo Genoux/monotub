@@ -3,6 +3,7 @@
 #include "app/state.h"
 #include "domain/controller.h"
 #include "domain/fan_schedule.h"
+#include "drivers/sht31.h"
 #include "secrets.h"
 #include "services/prefs_store.h"
 #include "services/telemetry.h"
@@ -135,21 +136,24 @@ void onMessage(char* topic, byte* payload, unsigned int length) {
   } else if (strcmp(topic, T_SIM_ENABLED_SET) == 0) {
     g.environment.simulationEnabled = parseBool(msg);
     if (g.environment.simulationEnabled) {
-      g.environment.humidityPercent = g.environment.simulatedHumidityPercent;
-      g.environment.smoothedHumidityPercent = g.environment.simulatedHumidityPercent;
-      if (isnan(g.environment.temperatureC)) g.environment.temperatureC = 23.0F;
-      g.environment.ok = true;
+      sht31Read();
+    } else {
+      g.environment.ok = false;
+      sht31Init();
+      sht31Read();
     }
+    mqttPublishLog("SIM %s RH=%.1f%% env_ok=%s",
+                   g.environment.simulationEnabled ? "ON" : "OFF",
+                   g.environment.simulatedHumidityPercent,
+                   g.environment.ok ? "true" : "false");
     persistAndPublish(false);
   } else if (strcmp(topic, T_SIM_HUMIDITY_SET) == 0) {
     float value;
     if (!parsePercent(msg, value)) return;
     g.environment.simulatedHumidityPercent = value;
     if (g.environment.simulationEnabled) {
-      g.environment.humidityPercent = value;
-      g.environment.smoothedHumidityPercent = value;
-      if (isnan(g.environment.temperatureC)) g.environment.temperatureC = 23.0F;
-      g.environment.ok = true;
+      sht31Read();
+      mqttPublishLog("SIM RH set %.1f%%", value);
     }
     persistAndPublish(false);
   }
@@ -188,7 +192,7 @@ void mqttPublishLog(const char* fmt, ...) {
 void mqttInit() {
   client.setServer(MQTT_HOST, MQTT_PORT);
   client.setCallback(onMessage);
-  client.setBufferSize(1024);
+  client.setBufferSize(MQTT_CLIENT_BUFFER_BYTES);
 }
 
 bool mqttConnect() {
@@ -273,13 +277,15 @@ void mqttPublishStatus() {
   JsonDocument doc;
   telemetryWriteStatus(doc);
 
-  char buf[1024];
+  char buf[STATUS_JSON_BYTES];
   size_t n = serializeJson(doc, buf, sizeof(buf));
   if (n >= sizeof(buf)) {
     Serial.println("status JSON truncated; increase buf");
     return;
   }
-  client.publish(T_STATUS, (uint8_t*)buf, n, true);
+  if (!client.publish(T_STATUS, (uint8_t*)buf, n, true)) {
+    Serial.printf("status MQTT publish failed (%u bytes)\n", (unsigned)n);
+  }
 }
 
 void mqttTickStatus() {
