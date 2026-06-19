@@ -15,7 +15,6 @@ services:
     environment:
       MQTT_URL: mqtt://mqtt:1883
       HTTP_PORT: 8001
-      CORS_ORIGIN: ${CORS_ORIGIN:-*}
     depends_on:
       - mqtt
     restart: unless-stopped
