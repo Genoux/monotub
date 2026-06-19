@@ -3,7 +3,7 @@ import { createExpressApp } from './infrastructure/express-app';
 import { connectMqttBridge } from './infrastructure/mqtt-client';
 
 const BROKER_URL = process.env.MQTT_URL ?? 'mqtt://localhost:1883';
-const HTTP_PORT = 8001;
+const HTTP_PORT = Number(process.env.HTTP_PORT ?? 8001);
 
 const state = createInitialState();
 const { publish, disconnect } = connectMqttBridge(BROKER_URL, state);
