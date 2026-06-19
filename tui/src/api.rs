@@ -3,16 +3,13 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct FanStatus {
-    pub on_seconds: u32,
-    pub off_seconds: u32,
-    pub routine: bool,
-    pub routine_paused: Option<bool>,
-    pub routine_pause_reason: Option<String>,
     pub fan: bool,
+    pub mist: Option<bool>,
     pub manual_fan: Option<bool>,
     pub manual_mist: Option<bool>,
     pub automation_mist: Option<bool>,
-    pub mist: Option<bool>,
+    pub fan_reason: Option<String>,
+    pub mist_reason: Option<String>,
     pub uptime_s: u64,
     pub rssi: i32,
     pub ip: Option<String>,
@@ -23,30 +20,19 @@ pub struct FanStatus {
     pub automation_enabled: Option<bool>,
     pub simulation_enabled: Option<bool>,
     pub simulated_humidity_percent: Option<f32>,
-    pub fan_reason: Option<String>,
-    pub mist_reason: Option<String>,
-    pub humidity_low_threshold: Option<f32>,
-    pub humidity_high_threshold: Option<f32>,
-    pub humidity_soft_low_threshold: Option<f32>,
-    pub humidity_soft_high_threshold: Option<f32>,
-    pub humidity_hard_high_threshold: Option<f32>,
-    pub humidity_low_persist_seconds: Option<u32>,
-    pub humidity_high_persist_seconds: Option<u32>,
-    pub mist_pulse_seconds: Option<u32>,
-    pub corrective_fan_seconds: Option<u32>,
-    pub corrective_fan_pulse_count: Option<u32>,
-    pub corrective_fan_pulse_limit: Option<u32>,
-    pub mist_cooldown_seconds: Option<u32>,
-    pub fan_cooldown_seconds: Option<u32>,
-    pub mist_cooldown_remaining_s: Option<u32>,
-    pub fan_cooldown_remaining_s: Option<u32>,
-    pub humidity_high_persist_remaining_s: Option<u32>,
-    pub mist_pulse_remaining_s: Option<u32>,
-    pub corrective_fan_remaining_s: Option<u32>,
-    pub scheduled_fae_on_seconds: Option<u32>,
-    pub scheduled_fae_off_seconds: Option<u32>,
-    pub scheduled_fae_on: Option<bool>,
-    pub next_scheduled_fae_s: Option<u32>,
+    // Band model.
+    pub rh_dry_below: Option<f32>,
+    pub rh_band_low: Option<f32>,
+    pub rh_band_high: Option<f32>,
+    pub rh_wet_above: Option<f32>,
+    pub band_hold_seconds: Option<u32>,
+    pub current_band: Option<String>,
+    pub band_hold_remaining_s: Option<u32>,
+    // Fan cycle.
+    pub vent_on_seconds: Option<u32>,
+    pub vent_off_seconds: Option<u32>,
+    pub duty_fan_on: Option<bool>,
+    pub next_duty_toggle_s: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -75,10 +61,7 @@ pub struct DeviceState {
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct DesiredFanState {
-    pub routine: Option<bool>,
     pub manual_fan: Option<bool>,
-    pub on_seconds: Option<u32>,
-    pub off_seconds: Option<u32>,
     pub mist: Option<bool>,
     pub automation_enabled: Option<bool>,
     #[serde(rename = "updatedAt")]
@@ -122,28 +105,6 @@ impl ApiClient {
     pub async fn resync_relays(&self) -> Result<()> {
         let url = format!("{}/relay/resync", self.base_url);
         self.http.post(&url).send().await?.error_for_status()?;
-        Ok(())
-    }
-
-    pub async fn set_on_seconds(&self, seconds: u32) -> Result<()> {
-        let url = format!("{}/on-seconds", self.base_url);
-        self.http
-            .post(&url)
-            .json(&serde_json::json!({ "seconds": seconds }))
-            .send()
-            .await?
-            .error_for_status()?;
-        Ok(())
-    }
-
-    pub async fn set_off_seconds(&self, seconds: u32) -> Result<()> {
-        let url = format!("{}/off-seconds", self.base_url);
-        self.http
-            .post(&url)
-            .json(&serde_json::json!({ "seconds": seconds }))
-            .send()
-            .await?
-            .error_for_status()?;
         Ok(())
     }
 
@@ -205,9 +166,8 @@ mod tests {
                 "fan": "OFF",
                 "status": null,
                 "desired": {
-                    "routine": true,
-                    "on_seconds": 15,
-                    "off_seconds": 20,
+                    "manual_fan": false,
+                    "automation_enabled": true,
                     "updatedAt": "2026-05-18T13:00:00.000Z"
                 },
                 "lastSeenAt": null,
@@ -218,9 +178,8 @@ mod tests {
         .expect("state JSON");
 
         assert_eq!(state.connected.as_deref(), Some("offline"));
-        assert_eq!(state.desired.routine, Some(true));
-        assert_eq!(state.desired.on_seconds, Some(15));
-        assert_eq!(state.desired.off_seconds, Some(20));
+        assert_eq!(state.desired.manual_fan, Some(false));
+        assert_eq!(state.desired.automation_enabled, Some(true));
     }
 
     #[tokio::test]
@@ -234,17 +193,5 @@ mod tests {
             .await
             .expect("fetch /state from mqtt-server");
         assert!(state.connected.is_none() || state.connected.is_some());
-    }
-
-    #[tokio::test]
-    #[ignore = "requires running mqtt-server"]
-    async fn post_schedule_round_trip() {
-        let base =
-            std::env::var("MONOTUB_API_URL").unwrap_or_else(|_| "http://localhost:8001".into());
-        let client = ApiClient::new(base);
-        client.set_on_seconds(15).await.expect("set on seconds");
-        client.set_off_seconds(20).await.expect("set off seconds");
-        let state = client.fetch_state().await.expect("fetch state");
-        assert!(state.last_seen_at.is_some());
     }
 }

@@ -8,7 +8,7 @@ use crate::tabs;
 use crate::theme;
 
 pub fn render(frame: &mut Frame, app: &App) {
-    if (app.api_error.is_some() || app.device_state.is_none()) && !app.show_help {
+    if app.is_offline() && !app.show_help {
         tabs::render(frame, app, frame.area());
         return;
     }
@@ -29,11 +29,7 @@ fn render_footer(frame: &mut Frame, area: ratatui::layout::Rect, app: &App) {
         return;
     }
 
-    let section_cmds = if app.edit_field.is_some() {
-        "Enter save  Esc cancel"
-    } else {
-        app.focused_section.commands()
-    };
+    let section_cmds = app.focused_section.commands();
 
     let logs_label = if app.show_logs_strip {
         "l logs*"

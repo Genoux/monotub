@@ -6,10 +6,8 @@ const char* fanReasonName(FanReason reason) {
   switch (reason) {
     case FanReason::Manual:
       return "manual";
-    case FanReason::ScheduledFae:
-      return "scheduled_fae";
-    case FanReason::HumidityCorrection:
-      return "humidity_correction";
+    case FanReason::Vent:
+      return "vent";
     case FanReason::Off:
     default:
       return "off";

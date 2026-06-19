@@ -6,7 +6,6 @@ void controllerInit();
 ActuatorChanges controllerTick();
 ActuatorChanges controllerApplyOutputs();
 ActuatorChanges controllerForceApplyOutputs();
-ActuatorChanges controllerSetRoutineEnabled(bool enabled);
 ActuatorChanges controllerSetAutomationEnabled(bool enabled);
 ActuatorChanges controllerSetFanEnabled(bool enabled);
 ActuatorChanges controllerToggleFan();

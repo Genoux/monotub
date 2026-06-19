@@ -2,7 +2,6 @@
 #include "app/config.h"
 #include "app/state.h"
 #include "domain/controller.h"
-#include "domain/fan_schedule.h"
 #include "drivers/sht31.h"
 #include "secrets.h"
 #include "services/prefs_store.h"
@@ -37,6 +36,12 @@ bool parsePercent(const String& value, float& out) {
   return true;
 }
 
+// Band edges must stay ordered: dry_below <= band_low <= band_high <= wet_above.
+bool bandEdgesOrdered(float dryBelow, float bandLow, float bandHigh,
+                      float wetAbove) {
+  return dryBelow <= bandLow && bandLow <= bandHigh && bandHigh <= wetAbove;
+}
+
 void persistAndPublish(bool savePrefs) {
   if (savePrefs) prefsSave();
   ActuatorChanges changes = controllerApplyOutputs();
@@ -59,24 +64,6 @@ void onMessage(char* topic, byte* payload, unsigned int length) {
     ActuatorChanges changes = controllerForceApplyOutputs();
     mqttPublishActuatorChanges(changes);
     mqttPublishStatus();
-  } else if (strcmp(topic, T_ROUTINE_SET) == 0) {
-    ActuatorChanges changes = controllerSetRoutineEnabled(parseBool(msg));
-    mqttPublishActuatorChanges(changes);
-    mqttPublishStatus();
-  } else if (strcmp(topic, T_ON_SEC_SET) == 0) {
-    uint32_t value;
-    if (!parsePositiveUInt(msg, value) ||
-        value == g.fanSettings.scheduledOnSeconds) return;
-    g.fanSettings.scheduledOnSeconds = value;
-    fanScheduleResyncTimer();
-    persistAndPublish(true);
-  } else if (strcmp(topic, T_OFF_SEC_SET) == 0) {
-    uint32_t value;
-    if (!parsePositiveUInt(msg, value) ||
-        value == g.fanSettings.scheduledOffSeconds) return;
-    g.fanSettings.scheduledOffSeconds = value;
-    fanScheduleResyncTimer();
-    persistAndPublish(true);
   } else if (strcmp(topic, T_FAN_SET) == 0) {
     ActuatorChanges changes = msg.equalsIgnoreCase("TOGGLE")
                                   ? controllerToggleFan()
@@ -93,45 +80,64 @@ void onMessage(char* topic, byte* payload, unsigned int length) {
     ActuatorChanges changes = controllerSetAutomationEnabled(parseBool(msg));
     mqttPublishActuatorChanges(changes);
     mqttPublishStatus();
-  } else if (strcmp(topic, T_RH_LOW_SET) == 0) {
+  } else if (strcmp(topic, T_RH_DRY_BELOW_SET) == 0) {
     float value;
     if (!parsePercent(msg, value)) return;
-    g.humiditySettings.lowRhPercent = value;
+    if (!bandEdgesOrdered(value, g.humiditySettings.rhBandLow,
+                          g.humiditySettings.rhBandHigh,
+                          g.humiditySettings.rhWetAbove)) {
+      mqttPublishLog("REJECT dry_below=%.1f breaks band order", value);
+      return;
+    }
+    g.humiditySettings.rhDryBelow = value;
     persistAndPublish(true);
-  } else if (strcmp(topic, T_RH_HIGH_SET) == 0) {
+  } else if (strcmp(topic, T_RH_BAND_LOW_SET) == 0) {
     float value;
     if (!parsePercent(msg, value)) return;
-    g.humiditySettings.highRhPercent = value;
+    if (!bandEdgesOrdered(g.humiditySettings.rhDryBelow, value,
+                          g.humiditySettings.rhBandHigh,
+                          g.humiditySettings.rhWetAbove)) {
+      mqttPublishLog("REJECT band_low=%.1f breaks band order", value);
+      return;
+    }
+    g.humiditySettings.rhBandLow = value;
     persistAndPublish(true);
-  } else if (strcmp(topic, T_RH_LOW_PERSIST_SET) == 0) {
+  } else if (strcmp(topic, T_RH_BAND_HIGH_SET) == 0) {
+    float value;
+    if (!parsePercent(msg, value)) return;
+    if (!bandEdgesOrdered(g.humiditySettings.rhDryBelow,
+                          g.humiditySettings.rhBandLow, value,
+                          g.humiditySettings.rhWetAbove)) {
+      mqttPublishLog("REJECT band_high=%.1f breaks band order", value);
+      return;
+    }
+    g.humiditySettings.rhBandHigh = value;
+    persistAndPublish(true);
+  } else if (strcmp(topic, T_RH_WET_ABOVE_SET) == 0) {
+    float value;
+    if (!parsePercent(msg, value)) return;
+    if (!bandEdgesOrdered(g.humiditySettings.rhDryBelow,
+                          g.humiditySettings.rhBandLow,
+                          g.humiditySettings.rhBandHigh, value)) {
+      mqttPublishLog("REJECT wet_above=%.1f breaks band order", value);
+      return;
+    }
+    g.humiditySettings.rhWetAbove = value;
+    persistAndPublish(true);
+  } else if (strcmp(topic, T_BAND_HOLD_SET) == 0) {
     uint32_t value;
     if (!parsePositiveUInt(msg, value)) return;
-    g.humiditySettings.lowPersistSeconds = value;
+    g.humiditySettings.bandHoldSeconds = value;
     persistAndPublish(true);
-  } else if (strcmp(topic, T_RH_HIGH_PERSIST_SET) == 0) {
+  } else if (strcmp(topic, T_VENT_ON_SEC_SET) == 0) {
     uint32_t value;
     if (!parsePositiveUInt(msg, value)) return;
-    g.humiditySettings.highPersistSeconds = value;
+    g.fanSettings.ventOnSeconds = value;
     persistAndPublish(true);
-  } else if (strcmp(topic, T_MIST_PULSE_SET) == 0) {
+  } else if (strcmp(topic, T_VENT_OFF_SEC_SET) == 0) {
     uint32_t value;
     if (!parsePositiveUInt(msg, value)) return;
-    g.humiditySettings.mistPulseSeconds = value;
-    persistAndPublish(true);
-  } else if (strcmp(topic, T_FAN_PULSE_SET) == 0) {
-    uint32_t value;
-    if (!parsePositiveUInt(msg, value)) return;
-    g.humiditySettings.fanPulseSeconds = value;
-    persistAndPublish(true);
-  } else if (strcmp(topic, T_MIST_COOLDOWN_SET) == 0) {
-    uint32_t value;
-    if (!parsePositiveUInt(msg, value)) return;
-    g.humiditySettings.mistCooldownSeconds = value;
-    persistAndPublish(true);
-  } else if (strcmp(topic, T_FAN_COOLDOWN_SET) == 0) {
-    uint32_t value;
-    if (!parsePositiveUInt(msg, value)) return;
-    g.humiditySettings.fanCooldownSeconds = value;
+    g.fanSettings.ventOffSeconds = value;
     persistAndPublish(true);
   } else if (strcmp(topic, T_SIM_ENABLED_SET) == 0) {
     g.environment.simulationEnabled = parseBool(msg);
@@ -210,22 +216,18 @@ bool mqttConnect() {
     client.publish(T_CONNECTED, "online", true);
     mqttPublishLog("BOOT reason=%s uptime=%lums",
                    resetReasonName(esp_reset_reason()), millis());
-    client.subscribe(T_ROUTINE_SET);
     client.subscribe(T_STATUS_REQ);
     client.subscribe(T_RELAY_RESYNC);
     client.subscribe(T_FAN_SET);
-    client.subscribe(T_ON_SEC_SET);
-    client.subscribe(T_OFF_SEC_SET);
     client.subscribe(T_MIST_SET);
     client.subscribe(T_AUTOMATION_ENABLED_SET);
-    client.subscribe(T_RH_LOW_SET);
-    client.subscribe(T_RH_HIGH_SET);
-    client.subscribe(T_RH_LOW_PERSIST_SET);
-    client.subscribe(T_RH_HIGH_PERSIST_SET);
-    client.subscribe(T_MIST_PULSE_SET);
-    client.subscribe(T_FAN_PULSE_SET);
-    client.subscribe(T_MIST_COOLDOWN_SET);
-    client.subscribe(T_FAN_COOLDOWN_SET);
+    client.subscribe(T_RH_DRY_BELOW_SET);
+    client.subscribe(T_RH_BAND_LOW_SET);
+    client.subscribe(T_RH_BAND_HIGH_SET);
+    client.subscribe(T_RH_WET_ABOVE_SET);
+    client.subscribe(T_BAND_HOLD_SET);
+    client.subscribe(T_VENT_ON_SEC_SET);
+    client.subscribe(T_VENT_OFF_SEC_SET);
     client.subscribe(T_SIM_ENABLED_SET);
     client.subscribe(T_SIM_HUMIDITY_SET);
     mqttPublishFanState();

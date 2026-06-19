@@ -35,30 +35,3 @@ pub fn display_bool(
         },
     }
 }
-
-pub fn display_u32(reported: Option<u32>, desired: Option<u32>) -> SyncDisplay {
-    match desired.or(reported) {
-        Some(value) => SyncDisplay {
-            text: format!("{value}s"),
-            pending: false,
-        },
-        None => SyncDisplay {
-            text: "unknown".into(),
-            pending: false,
-        },
-    }
-}
-
-pub fn format_schedule(
-    reported_on: Option<u32>,
-    reported_off: Option<u32>,
-    desired_on: Option<u32>,
-    desired_off: Option<u32>,
-) -> SyncDisplay {
-    let on = display_u32(reported_on, desired_on);
-    let off = display_u32(reported_off, desired_off);
-    SyncDisplay {
-        text: format!("{} on / {} off", on.text, off.text),
-        pending: on.pending || off.pending,
-    }
-}

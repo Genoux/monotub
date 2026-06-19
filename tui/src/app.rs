@@ -6,7 +6,7 @@ use ratatui::crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind};
 use tokio::sync::mpsc;
 
 use crate::api::{ApiClient, DeviceState};
-use crate::commands::{AppCommand, EditField};
+use crate::commands::AppCommand;
 use crate::tabs;
 
 const POLL_INTERVAL: Duration = Duration::from_secs(2);
@@ -44,7 +44,7 @@ impl FocusedSection {
 
     pub fn commands(self) -> &'static str {
         match self {
-            Self::Fan => "x manual fan  o on-sec  f off-sec",
+            Self::Fan => "x manual fan",
             Self::Mist => "m manual mist",
             Self::Automation => "a toggle auto",
             Self::Device => "y resync relays",
@@ -53,14 +53,42 @@ impl FocusedSection {
     }
 }
 
+/// Local deadlines derived from the most recent server status, updated every poll.
+/// Used by the renderer to interpolate smooth countdowns every 100ms frame instead
+/// of snapping to server values every 2s.
+pub struct LocalDeadlines {
+    /// When the current band hold expires (None = settled, no hold pending).
+    pub band_hold: Option<Instant>,
+    /// Wall-clock instant we last received a valid status from the device.
+    pub last_device_contact: Option<Instant>,
+}
+
+impl LocalDeadlines {
+    fn new() -> Self {
+        Self {
+            band_hold: None,
+            last_device_contact: None,
+        }
+    }
+
+    fn update_from_status(&mut self, status: &crate::api::FanStatus) {
+        let now = Instant::now();
+        self.last_device_contact = Some(now);
+
+        self.band_hold = status
+            .band_hold_remaining_s
+            .filter(|&s| s > 0)
+            .map(|s| now + Duration::from_secs(s as u64));
+    }
+}
+
 pub struct App {
     pub api: ApiClient,
     pub device_state: Option<DeviceState>,
+    pub deadlines: LocalDeadlines,
     pub api_error: Option<String>,
     pub last_poll_at: Option<String>,
     pub last_poll_latency_ms: Option<u128>,
-    pub edit_field: Option<EditField>,
-    pub edit_buffer: String,
     pub logs: Vec<String>,
     pub should_quit: bool,
     pub show_logs_strip: bool,
@@ -89,8 +117,6 @@ enum AppAction {
     ResyncRelays,
     SetSimulation(bool),
     SetSimulatedHumidity(f32),
-    SetOnSeconds(u32),
-    SetOffSeconds(u32),
 }
 
 impl App {
@@ -99,11 +125,10 @@ impl App {
         Self {
             api,
             device_state: None,
+            deadlines: LocalDeadlines::new(),
             api_error: None,
             last_poll_at: None,
             last_poll_latency_ms: None,
-            edit_field: None,
-            edit_buffer: String::new(),
             logs: vec![format_log("TUI started")],
             should_quit: false,
             show_logs_strip: false,
@@ -113,6 +138,30 @@ impl App {
             state_rx,
             state_tx,
         }
+    }
+
+    pub fn is_offline(&self) -> bool {
+        if self.api_error.is_some() || self.device_state.is_none() {
+            return true;
+        }
+        if self
+            .device_state
+            .as_ref()
+            .and_then(|s| s.connected.as_deref())
+            .map(|c| c == "offline")
+            .unwrap_or(false)
+        {
+            return true;
+        }
+        if self
+            .deadlines
+            .last_device_contact
+            .map(|t| t.elapsed().as_secs() > 10)
+            .unwrap_or(false)
+        {
+            return true;
+        }
+        false
     }
 
     pub fn spawn_poller(&self) {
@@ -149,6 +198,9 @@ impl App {
                         self.push_log("API connection recovered");
                     }
                     self.log_state_update(&state);
+                    if let Some(status) = &state.status {
+                        self.deadlines.update_from_status(status);
+                    }
                     self.device_state = Some(state);
                     self.api_error = None;
                 }
@@ -173,19 +225,10 @@ impl App {
             }
 
             if self.api_error.is_some() {
-                if self.handle_global_key(key) {
-                    return Ok(());
-                }
-                self.cancel_edit();
+                self.handle_global_key(key);
                 return Ok(());
             }
 
-            if self.edit_field.is_some() {
-                if let Some(command) = tabs::handle_key(key, self) {
-                    self.apply_command(command);
-                }
-                return Ok(());
-            }
             if self.handle_global_key(key) {
                 return Ok(());
             }
@@ -204,13 +247,6 @@ impl App {
             AppCommand::ResyncRelays => self.resync_relays(),
             AppCommand::ToggleSimulation => self.toggle_simulation(),
             AppCommand::AdjustSimulatedHumidity(delta) => self.adjust_simulated_humidity(delta),
-            AppCommand::StartEdit(field) => self.start_edit(field),
-            AppCommand::CancelEdit => self.cancel_edit(),
-            AppCommand::PushEditChar(c) => self.edit_buffer.push(c),
-            AppCommand::BackspaceEdit => {
-                self.edit_buffer.pop();
-            }
-            AppCommand::CommitEdit => self.commit_edit(),
         }
     }
 
@@ -246,40 +282,6 @@ impl App {
         }
     }
 
-    pub fn start_edit(&mut self, field: EditField) {
-        self.edit_field = Some(field);
-        self.edit_buffer.clear();
-    }
-
-    pub fn cancel_edit(&mut self) {
-        self.edit_field = None;
-        self.edit_buffer.clear();
-    }
-
-    pub fn commit_edit(&mut self) {
-        let Some(field) = self.edit_field.take() else {
-            return;
-        };
-
-        let parsed = match self.edit_buffer.parse::<u32>() {
-            Ok(n) if n > 0 => n,
-            _ => {
-                self.api_error = Some("seconds must be a positive integer".into());
-                self.push_log("Rejected edit: seconds must be a positive integer");
-                self.edit_buffer.clear();
-                return;
-            }
-        };
-
-        self.edit_buffer.clear();
-        let action = match field {
-            EditField::OnSeconds => AppAction::SetOnSeconds(parsed),
-            EditField::OffSeconds => AppAction::SetOffSeconds(parsed),
-        };
-        self.push_log(format!("Set {} to {parsed}s", field.label()));
-        self.run_action(action);
-    }
-
     pub fn toggle_fan(&mut self) {
         let automation_enabled = self
             .device_state
@@ -313,9 +315,7 @@ impl App {
             })
             .unwrap_or(false);
         if automation_enabled {
-            self.push_log(
-                "Grow mode: mist is automatic — turn automation OFF, then use m",
-            );
+            self.push_log("Grow mode: mist is automatic — turn automation OFF, then use m");
             return;
         }
         self.push_log("Toggle mist");
@@ -451,8 +451,6 @@ impl App {
                 AppAction::SetSimulatedHumidity(humidity) => {
                     api.set_simulated_humidity(humidity).await
                 }
-                AppAction::SetOnSeconds(sec) => api.set_on_seconds(sec).await,
-                AppAction::SetOffSeconds(sec) => api.set_off_seconds(sec).await,
             };
 
             if let Err(err) = mutation {

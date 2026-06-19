@@ -3,9 +3,6 @@ import {
 	setDesiredAutomationSettings,
 	setDesiredManualFan,
 	setDesiredMist,
-	setDesiredOffSeconds,
-	setDesiredOnSeconds,
-	setDesiredRoutine,
 } from "../../domain/monotub/state";
 import { monotubTopics } from "../../domain/monotub/topics";
 import type { MonotubState } from "../../domain/monotub/types";
@@ -18,27 +15,25 @@ type FanControlHttpDeps = {
 
 const automationFieldTopics = {
 	automation_enabled: monotubTopics.automationEnabledSet,
-	humidity_low_threshold: monotubTopics.humidityLowSet,
-	humidity_high_threshold: monotubTopics.humidityHighSet,
-	humidity_low_persist_seconds: monotubTopics.humidityLowPersistSet,
-	humidity_high_persist_seconds: monotubTopics.humidityHighPersistSet,
-	mist_pulse_seconds: monotubTopics.mistPulseSet,
-	corrective_fan_seconds: monotubTopics.correctiveFanSet,
-	mist_cooldown_seconds: monotubTopics.mistCooldownSet,
-	fan_cooldown_seconds: monotubTopics.fanCooldownSet,
+	rh_dry_below: monotubTopics.humidityDryBelowSet,
+	rh_band_low: monotubTopics.humidityBandLowSet,
+	rh_band_high: monotubTopics.humidityBandHighSet,
+	rh_wet_above: monotubTopics.humidityWetAboveSet,
+	band_hold_seconds: monotubTopics.bandHoldSet,
+	vent_on_seconds: monotubTopics.ventOnSecondsSet,
+	vent_off_seconds: monotubTopics.ventOffSecondsSet,
 } as const;
 
 type AutomationField = keyof typeof automationFieldTopics;
 
 const numberFields = new Set<AutomationField>([
-	"humidity_low_threshold",
-	"humidity_high_threshold",
-	"humidity_low_persist_seconds",
-	"humidity_high_persist_seconds",
-	"mist_pulse_seconds",
-	"corrective_fan_seconds",
-	"mist_cooldown_seconds",
-	"fan_cooldown_seconds",
+	"rh_dry_below",
+	"rh_band_low",
+	"rh_band_high",
+	"rh_wet_above",
+	"band_hold_seconds",
+	"vent_on_seconds",
+	"vent_off_seconds",
 ]);
 
 const validateAutomationPatch = (
@@ -111,25 +106,6 @@ export const registerFanControlHttpRoutes = (
 		res.json({ ok: true });
 	});
 
-	app.post("/routine", (req: Request, res: Response) => {
-		const state = getState();
-		const automationEnabled =
-			state.desired.automation_enabled ?? state.status?.automation_enabled ?? false;
-		if (automationEnabled) {
-			res.status(409).json({ error: "routine is controlled by automation" });
-			return;
-		}
-
-		const enabled = req.body?.enabled;
-		if (typeof enabled !== "boolean") {
-			res.status(400).json({ error: "body.enabled must be boolean" });
-			return;
-		}
-		publish(monotubTopics.routineSet, enabled ? "ON" : "OFF");
-		setDesiredRoutine(state, enabled);
-		res.json({ ok: true });
-	});
-
 	app.post("/fan", (req: Request, res: Response) => {
 		if (getState().status?.automation_enabled === true) {
 			res.status(409).json({ error: "manual fan control requires automation off" });
@@ -160,30 +136,6 @@ export const registerFanControlHttpRoutes = (
 		publish(monotubTopics.fanSet, "TOGGLE");
 		setDesiredManualFan(state, next);
 		res.json({ ok: true, fan: next });
-	});
-
-	app.post("/on-seconds", (req: Request, res: Response) => {
-		const seconds = Number(req.body?.seconds);
-		if (!Number.isFinite(seconds) || seconds <= 0) {
-			res.status(400).json({ error: "body.seconds must be > 0" });
-			return;
-		}
-		const roundedSeconds = Math.round(seconds);
-		publish(monotubTopics.onSecondsSet, String(roundedSeconds));
-		setDesiredOnSeconds(getState(), roundedSeconds);
-		res.json({ ok: true });
-	});
-
-	app.post("/off-seconds", (req: Request, res: Response) => {
-		const seconds = Number(req.body?.seconds);
-		if (!Number.isFinite(seconds) || seconds <= 0) {
-			res.status(400).json({ error: "body.seconds must be > 0" });
-			return;
-		}
-		const roundedSeconds = Math.round(seconds);
-		publish(monotubTopics.offSecondsSet, String(roundedSeconds));
-		setDesiredOffSeconds(getState(), roundedSeconds);
-		res.json({ ok: true });
 	});
 
 	app.post("/mist", (req: Request, res: Response) => {
@@ -226,11 +178,7 @@ export const registerFanControlHttpRoutes = (
 				publish(automationFieldTopics[field], message);
 			},
 		);
-		const state = getState();
-		setDesiredAutomationSettings(state, patch);
-		if (patch.automation_enabled === true) {
-			setDesiredRoutine(state, true);
-		}
+		setDesiredAutomationSettings(getState(), patch);
 		res.json({ ok: true });
 	});
 };

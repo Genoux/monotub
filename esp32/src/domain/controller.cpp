@@ -6,185 +6,132 @@
 #include "services/prefs_store.h"
 
 namespace {
-bool activeUntil(uint32_t until) {
-  return until != 0 && (int32_t)(until - millis()) > 0;
+bool sensorReadable() {
+  return g.environment.ok && !isnan(g.environment.smoothedHumidityPercent);
 }
 
-float softLowRhPercent() {
-  return g.humiditySettings.lowRhPercent + RH_SOFT_LOW_OFFSET_PERCENT;
+// Debounce the raw band into the acted-upon band: a new band must hold for
+// bandHoldSeconds before it engages. Until then the previous action stays put.
+HumidityBand updateEngagedBand(float rh) {
+  const HumidityBand band = classifyBand(rh);
+  if (band != g.runtime.currentBand) {
+    g.runtime.currentBand = band;
+    g.runtime.bandEnteredAt = millis();
+  }
+  if (g.runtime.engagedBand == HumidityBand::Unknown ||
+      bandHoldRemainingSeconds() == 0) {
+    g.runtime.engagedBand = g.runtime.currentBand;
+  }
+  return g.runtime.engagedBand;
 }
 
-float softHighRhPercent() {
-  return g.humiditySettings.highRhPercent - RH_SOFT_HIGH_OFFSET_PERCENT;
+void driveFanForBand(HumidityBand band) {
+  switch (fanModeForBand(band)) {
+    case FanMode::Vent:
+      // Start in ON phase — vent immediately when humidity is out of range.
+      fanDutyUpdate(true, g.fanSettings.ventOnSeconds,
+                    g.fanSettings.ventOffSeconds, true);
+      break;
+    case FanMode::Off:
+      fanDutyUpdate(false, 0, 0);
+      break;
+  }
 }
 
-bool routineAllowedAtRh(float rh) {
-  return rh >= softLowRhPercent() && rh <= softHighRhPercent();
+void driveMistForBand(HumidityBand band) {
+  switch (mistIntentForBand(band)) {
+    case MistIntent::On:
+      g.actuators.automationMistOn = true;
+      break;
+    case MistIntent::Off:
+      g.actuators.automationMistOn = false;
+      break;
+    case MistIntent::Hold:
+      break;
+  }
 }
 
-bool routineShouldPause() {
-  if (!g.humiditySettings.automationEnabled) return true;
-  return g.environment.ok && !isnan(g.environment.smoothedHumidityPercent) &&
-         !routineAllowedAtRh(g.environment.smoothedHumidityPercent);
+void resetBandTracking() {
+  g.runtime.currentBand = HumidityBand::Unknown;
+  g.runtime.engagedBand = HumidityBand::Unknown;
+  g.runtime.bandEnteredAt = 0;
 }
 
-void syncFanRoutinePauseState() {
-  const bool paused = routineShouldPause();
-  if (paused) {
-    if (!g.runtime.fanRoutinePausedByHumidity) {
-      if (!g.humiditySettings.automationEnabled) {
-        Serial.println("Routine paused: automation off");
-      } else {
-        Serial.printf("Routine paused: humidity %.1f%% outside %.1f-%.1f%%\n",
-                      g.environment.smoothedHumidityPercent, softLowRhPercent(),
-                      softHighRhPercent());
-      }
-    }
-    g.runtime.fanRoutinePausedByHumidity = true;
-    fanSchedulePause();
+// Single linear pass: classify -> debounce -> mist + fan from the band table.
+void evaluateAutomation() {
+  if (!g.humiditySettings.automationEnabled) {
+    fanDutyUpdate(false, 0, 0);
     return;
   }
-
-  if (g.runtime.fanRoutinePausedByHumidity) {
-    g.runtime.fanRoutinePausedByHumidity = false;
-    fanScheduleResumeWithOffWait();
+  if (!sensorReadable()) {
+    g.actuators.automationMistOn = true;  // safe fallback: keep humidity up
+    fanDutyUpdate(false, 0, 0);
+    resetBandTracking();
+    return;
   }
+  const HumidityBand band = updateEngagedBand(g.environment.smoothedHumidityPercent);
+  driveMistForBand(band);
+  driveFanForBand(band);
 }
 
-bool resolveFanOn(bool correctiveFanOn) {
+bool resolveFanOn() {
   if (!g.humiditySettings.automationEnabled) return g.actuators.manualFanOn;
-  if (correctiveFanOn) return true;
-  if (g.runtime.fanRoutinePausedByHumidity) return false;
-
-  const bool scheduledFanOn =
-      g.fanSettings.routineEnabled && g.actuators.scheduledFanOn;
-  return scheduledFanOn;
-}
-
-void assignFanReason(bool correctiveFanOn) {
-  if (!g.humiditySettings.automationEnabled && g.actuators.manualFanOn) {
-    g.actuators.fanReason = FanReason::Manual;
-  } else if (correctiveFanOn) {
-    g.actuators.fanReason = FanReason::HumidityCorrection;
-  } else if (resolveFanOn(false)) {
-    g.actuators.fanReason = FanReason::ScheduledFae;
-  } else {
-    g.actuators.fanReason = FanReason::Off;
-  }
+  return g.actuators.dutyFanOn;
 }
 
 bool resolveMistOn() {
   if (!g.humiditySettings.automationEnabled) return g.actuators.manualMistOn;
-
-  if (!g.environment.ok || isnan(g.environment.smoothedHumidityPercent)) {
-    g.actuators.automationMistOn = true;
-    return g.actuators.automationMistOn;
-  }
-
-  const float rh = g.environment.smoothedHumidityPercent;
-  if (rh < g.humiditySettings.lowRhPercent) {
-    g.actuators.automationMistOn = true;
-  } else if (rh > softHighRhPercent()) {
-    g.actuators.automationMistOn = false;
-  }
-
   return g.actuators.automationMistOn;
+}
+
+void assignReasons() {
+  if (!g.humiditySettings.automationEnabled) {
+    g.actuators.fanReason =
+        g.actuators.manualFanOn ? FanReason::Manual : FanReason::Off;
+    g.actuators.mistReason = MistReason::Manual;
+    return;
+  }
+  g.actuators.mistReason = MistReason::HumidityAutomation;
+  g.actuators.fanReason = g.actuators.dutyFanOn ? FanReason::Vent : FanReason::Off;
 }
 }  // namespace
 
 void controllerInit() {
-  g.actuators.scheduledFanOn = false;
-  if (g.fanSettings.routineEnabled) {
-    g.runtime.nextScheduledFanToggleAt =
-        millis() + g.fanSettings.scheduledOnSeconds * 1000UL;
-    Serial.printf("Routine init: first ON in %us\n",
-                  g.fanSettings.scheduledOnSeconds);
-  }
-  syncFanRoutinePauseState();
+  g.actuators.dutyFanOn = false;
+  g.runtime.nextDutyToggleAt = 0;
+  resetBandTracking();
 }
 
 ActuatorChanges controllerApplyOutputs() {
-  const bool correctiveFanOn = activeUntil(g.runtime.correctiveFanUntil);
-  const bool fanOn = resolveFanOn(correctiveFanOn);
-
-  assignFanReason(correctiveFanOn);
-  g.actuators.mistReason = g.humiditySettings.automationEnabled
-                                ? MistReason::HumidityAutomation
-                                : MistReason::Manual;
-
-  return actuatorsApply(fanOn, resolveMistOn());
+  assignReasons();
+  return actuatorsApply(resolveFanOn(), resolveMistOn());
 }
 
 ActuatorChanges controllerForceApplyOutputs() {
-  const bool correctiveFanOn = activeUntil(g.runtime.correctiveFanUntil);
-  const bool fanOn = resolveFanOn(correctiveFanOn);
-
-  assignFanReason(correctiveFanOn);
-  g.actuators.mistReason = g.humiditySettings.automationEnabled
-                                ? MistReason::HumidityAutomation
-                                : MistReason::Manual;
-
-  return actuatorsForceApply(fanOn, resolveMistOn());
+  assignReasons();
+  return actuatorsForceApply(resolveFanOn(), resolveMistOn());
 }
 
 ActuatorChanges controllerTick() {
   if (millis() - g.runtime.lastControllerAt <= CONTROLLER_INTERVAL_MS) {
     return {};
   }
-
   g.runtime.lastControllerAt = millis();
-  syncFanRoutinePauseState();
-  if (!g.runtime.fanRoutinePausedByHumidity) {
-    fanScheduleTick();
-  }
-  humidityControlTick();
-  return controllerApplyOutputs();
-}
-
-ActuatorChanges controllerSetRoutineEnabled(bool enabled) {
-  if (g.humiditySettings.automationEnabled) {
-    if (!g.fanSettings.routineEnabled) {
-      g.fanSettings.routineEnabled = true;
-      prefsSave();
-    }
-    syncFanRoutinePauseState();
-    return controllerApplyOutputs();
-  }
-
-  if (enabled == g.fanSettings.routineEnabled) return {};
-
-  g.fanSettings.routineEnabled = enabled;
-  if (!enabled) {
-    g.actuators.scheduledFanOn = false;
-    g.runtime.fanRoutinePausedByHumidity = false;
-  } else {
-    syncFanRoutinePauseState();
-    if (!g.runtime.fanRoutinePausedByHumidity) {
-      fanScheduleBegin();
-    }
-  }
-
-  prefsSave();
+  evaluateAutomation();
   return controllerApplyOutputs();
 }
 
 ActuatorChanges controllerSetAutomationEnabled(bool enabled) {
   if (enabled == g.humiditySettings.automationEnabled) {
-    syncFanRoutinePauseState();
     return controllerApplyOutputs();
   }
 
   g.humiditySettings.automationEnabled = enabled;
   if (enabled) {
-    g.fanSettings.routineEnabled = true;
+    resetBandTracking();
+  } else {
+    fanDutyUpdate(false, 0, 0);
   }
-  if (!enabled) {
-    g.runtime.correctiveFanUntil = 0;
-    g.runtime.highHumiditySince = 0;
-    g.runtime.correctiveFanPulseWindowStartedAt = 0;
-    g.runtime.correctiveFanPulseCount = 0;
-  }
-  syncFanRoutinePauseState();
   prefsSave();
   return controllerApplyOutputs();
 }
