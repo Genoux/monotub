@@ -12,15 +12,10 @@
 .env.*.local
 **/secrets.h
 
-# Node / Bun (dashboard, server)
+# Node / Bun (server)
 node_modules/
 *.log
 *.tsbuildinfo
-
-# Next.js (dashboard)
-dashboard/.next/
-dashboard/out/
-dashboard/.vercel/
 
 # Rust (tui)
 tui/target/

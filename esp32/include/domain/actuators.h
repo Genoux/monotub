@@ -6,9 +6,4 @@ struct ActuatorChanges {
 };
 
 ActuatorChanges actuatorsApply(bool fanOn, bool mistOn);
-ActuatorChanges actuatorsToggleManualFan();
-ActuatorChanges actuatorsToggleManualMist();
-void actuatorsClearManualFanHold();
-void actuatorsClearManualMistHold();
-void actuatorsSetManualFan(bool on);
-void actuatorsSetManualMist(bool on);
+ActuatorChanges actuatorsForceApply(bool fanOn, bool mistOn);

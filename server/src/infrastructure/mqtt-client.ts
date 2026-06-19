@@ -1,5 +1,6 @@
 import mqtt, { type MqttClient } from 'mqtt';
 import { handleFanControlMqttMessage } from '../features/fan-control/mqtt-handlers';
+import { logMqttSend } from './mqtt-log';
 import { monotubTopics } from '../domain/monotub/topics';
 import type { MonotubState } from '../domain/monotub/types';
 
@@ -39,7 +40,7 @@ export const connectMqttBridge = (
     // Command topics must not be retained — on ESP32 reconnect the broker
     // would replay every /set message and pulse latching relays again.
     client.publish(topic, message, { retain: false, qos: 1 });
-    console.log(`[send] ${topic} = ${message}`);
+    logMqttSend(topic, message);
   };
 
   const disconnect = () => {

@@ -7,7 +7,6 @@
 
 namespace {
 constexpr uint32_t MIN_RELAY_COMMAND_GAP_MS = 800;
-constexpr uint32_t SCHEDULE_RELAY_COMMAND_LOCK_MS = 5000;
 
 bool reconnectSuppressActive() {
   return millis() < g.runtime.relayCommandSuppressUntil;
@@ -17,27 +16,8 @@ bool relayCommandGapElapsed() {
   return millis() - g.runtime.lastRelayCommandAt >= MIN_RELAY_COMMAND_GAP_MS;
 }
 
-bool scheduleFanCommandBlocked() {
-  return millis() < g.runtime.fanCommandLockUntil || reconnectSuppressActive() ||
-         !relayCommandGapElapsed();
-}
-
-bool scheduleMistCommandBlocked() {
-  return millis() < g.runtime.mistCommandLockUntil || reconnectSuppressActive() ||
-         !relayCommandGapElapsed();
-}
-
-void lockFanAfterCommand() {
-  g.runtime.fanCommandLockUntil = millis() + SCHEDULE_RELAY_COMMAND_LOCK_MS;
-  g.runtime.lastRelayCommandAt = millis();
-}
-
-void lockMistAfterCommand() {
-  g.runtime.mistCommandLockUntil = millis() + SCHEDULE_RELAY_COMMAND_LOCK_MS;
-  g.runtime.lastRelayCommandAt = millis();
-}
-
 bool setRelayState(uint8_t pin, bool on) {
+  if (millis() < g.runtime.relayBootSuppressUntil) return false;
   if (reconnectSuppressActive() || !relayCommandGapElapsed()) return false;
   relaySet(pin, on);
   g.runtime.lastRelayCommandAt = millis();
@@ -50,17 +30,8 @@ bool setRelayState(uint8_t pin, bool on) {
 ActuatorChanges actuatorsApply(bool fanOn, bool mistOn) {
   ActuatorChanges changes;
 
-  // Manual hold: user toggled via x/m — routine must not overwrite it.
-  if (g.runtime.manualFanHold) {
-    fanOn = g.actuators.fanOn;
-  }
-  if (g.runtime.manualMistHold) {
-    mistOn = g.actuators.mistOn;
-  }
-
-  if (fanOn != g.actuators.fanOn && !scheduleFanCommandBlocked()) {
+  if (fanOn != g.actuators.fanOn) {
     if (setRelayState(FAN_RELAY_PIN, fanOn)) {
-      lockFanAfterCommand();
       g.actuators.fanOn = fanOn;
       prefsSaveRelayState();
       Serial.printf("Fan: %s (%s)\n", fanOn ? "ON" : "OFF",
@@ -70,9 +41,9 @@ ActuatorChanges actuatorsApply(bool fanOn, bool mistOn) {
   }
   digitalWrite(LED_PIN, g.actuators.fanOn ? HIGH : LOW);
 
-  if (mistOn != g.actuators.mistOn && !scheduleMistCommandBlocked()) {
+  if (mistOn != g.actuators.mistOn && !reconnectSuppressActive() &&
+      relayCommandGapElapsed()) {
     if (setRelayState(MIST_RELAY_PIN, mistOn)) {
-      lockMistAfterCommand();
       g.actuators.mistOn = mistOn;
       prefsSaveRelayState();
       Serial.printf("Mist: %s (%s)\n", mistOn ? "ON" : "OFF",
@@ -84,57 +55,23 @@ ActuatorChanges actuatorsApply(bool fanOn, bool mistOn) {
   return changes;
 }
 
-ActuatorChanges actuatorsToggleManualFan() {
-  ActuatorChanges changes;
+ActuatorChanges actuatorsForceApply(bool fanOn, bool mistOn) {
+  relaySet(FAN_RELAY_PIN, fanOn);
+  relaySet(MIST_RELAY_PIN, mistOn);
 
-  const bool fanOn = !g.actuators.fanOn;
-  if (!setRelayState(FAN_RELAY_PIN, fanOn)) return changes;
-
-  lockFanAfterCommand();
-  g.runtime.manualFanHold = true;
   g.actuators.fanOn = fanOn;
-  g.actuators.manualFanOn = g.actuators.fanOn;
-  g.actuators.fanReason =
-      g.actuators.fanOn ? FanReason::Manual : FanReason::Off;
-  prefsSaveRelayState();
-  digitalWrite(LED_PIN, g.actuators.fanOn ? HIGH : LOW);
-  Serial.printf("Fan toggle: %s (manual)\n", g.actuators.fanOn ? "ON" : "OFF");
-  changes.fanChanged = true;
-  return changes;
-}
-
-ActuatorChanges actuatorsToggleManualMist() {
-  ActuatorChanges changes;
-
-  const bool mistOn = !g.actuators.mistOn;
-  if (!setRelayState(MIST_RELAY_PIN, mistOn)) return changes;
-
-  lockMistAfterCommand();
-  g.runtime.manualMistHold = true;
   g.actuators.mistOn = mistOn;
-  g.actuators.manualMistOn = g.actuators.mistOn;
-  g.actuators.mistReason =
-      g.actuators.mistOn ? MistReason::Manual : MistReason::Off;
+  g.runtime.lastRelayCommandAt = millis();
+
+  digitalWrite(LED_PIN, g.actuators.fanOn ? HIGH : LOW);
   prefsSaveRelayState();
-  Serial.printf("Mist toggle: %s (manual)\n", g.actuators.mistOn ? "ON" : "OFF");
+
+  Serial.printf("Relay sync: fan=%s (%s) mist=%s (%s)\n",
+                fanOn ? "ON" : "OFF", fanReasonName(g.actuators.fanReason),
+                mistOn ? "ON" : "OFF", mistReasonName(g.actuators.mistReason));
+
+  ActuatorChanges changes;
+  changes.fanChanged = true;
   changes.mistChanged = true;
   return changes;
-}
-
-void actuatorsClearManualFanHold() {
-  g.runtime.manualFanHold = false;
-  g.actuators.manualFanOn = false;
-}
-
-void actuatorsClearManualMistHold() {
-  g.runtime.manualMistHold = false;
-  g.actuators.manualMistOn = false;
-}
-
-void actuatorsSetManualFan(bool on) {
-  g.actuators.manualFanOn = on;
-}
-
-void actuatorsSetManualMist(bool on) {
-  g.actuators.manualMistOn = on;
 }

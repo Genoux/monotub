@@ -15,14 +15,6 @@ pub fn accent_bright() -> Style {
     Style::new().fg(PRIMARY_HIGH).add_modifier(Modifier::BOLD)
 }
 
-pub fn progress_bar() -> Style {
-    accent_bright()
-}
-
-pub fn progress_empty() -> Style {
-    Style::new().fg(MUTED_DARK)
-}
-
 pub fn text() -> Style {
     Style::new()
 }

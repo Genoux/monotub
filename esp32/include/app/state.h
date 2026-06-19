@@ -6,71 +6,76 @@
 enum class FanReason {
   Off,
   Manual,
-  ScheduledFae,
-  HumidityCorrection,
+  Vent,
 };
 
 enum class MistReason {
-  Off,
   Manual,
-  LowHumidity,
+  HumidityAutomation,
+};
+
+enum class HumidityBand {
+  Unknown,
+  TooDry,
+  Recovering,
+  Healthy,
+  Drying,
+  TooWet,
 };
 
 struct EnvironmentState {
   float humidityPercent = NAN;
   float temperatureC = NAN;
   float smoothedHumidityPercent = NAN;
+  float simulatedHumidityPercent = 88.0F;
   uint8_t sampleCount = 0;
   bool ok = false;
+  bool simulationEnabled = false;
   uint32_t lastReadAt = 0;
 };
 
 struct FanSettings {
-  bool routineEnabled = DEFAULT_ROUTINE_ENABLED;
-  uint32_t scheduledOnSeconds = DEFAULT_ON_SECONDS;
-  uint32_t scheduledOffSeconds = DEFAULT_OFF_SECONDS;
+  uint32_t ventOnSeconds = DEFAULT_VENT_ON_SECONDS;
+  uint32_t ventOffSeconds = DEFAULT_VENT_OFF_SECONDS;
 };
 
 struct HumiditySettings {
   bool automationEnabled = DEFAULT_AUTOMATION_ENABLED;
-  float lowRhPercent = DEFAULT_RH_LOW_PERCENT;
-  float highRhPercent = DEFAULT_RH_HIGH_PERCENT;
-  uint32_t lowPersistSeconds = DEFAULT_RH_LOW_PERSIST_SECONDS;
-  uint32_t highPersistSeconds = DEFAULT_RH_HIGH_PERSIST_SECONDS;
-  uint32_t mistPulseSeconds = DEFAULT_MIST_PULSE_SECONDS;
-  uint32_t fanPulseSeconds = DEFAULT_CORRECTIVE_FAN_SECONDS;
-  uint32_t mistCooldownSeconds = DEFAULT_MIST_COOLDOWN_SECONDS;
-  uint32_t fanCooldownSeconds = DEFAULT_FAN_COOLDOWN_SECONDS;
+  float rhDryBelow = DEFAULT_RH_DRY_BELOW;
+  float rhBandLow = DEFAULT_RH_BAND_LOW;
+  float rhBandHigh = DEFAULT_RH_BAND_HIGH;
+  float rhWetAbove = DEFAULT_RH_WET_ABOVE;
+  uint32_t bandHoldSeconds = DEFAULT_BAND_HOLD_SECONDS;
 };
 
 struct ActuatorState {
   bool fanOn = false;
   bool mistOn = false;
   bool manualFanOn = false;
-  bool manualMistOn = false;
-  bool scheduledFanOn = false;
+  bool manualMistOn = true;
+  bool automationMistOn = true;
+  bool dutyFanOn = false;
   FanReason fanReason = FanReason::Off;
-  MistReason mistReason = MistReason::Off;
+  MistReason mistReason = MistReason::Manual;
 };
 
 struct RuntimeState {
-  uint32_t nextScheduledFanToggleAt = 0;
-  uint32_t lowHumiditySince = 0;
-  uint32_t highHumiditySince = 0;
-  uint32_t mistPulseUntil = 0;
-  uint32_t correctiveFanUntil = 0;
-  uint32_t lastMistPulseAt = 0;
-  uint32_t lastCorrectiveFanAt = 0;
+  // Fan duty-cycle engine.
+  uint32_t nextDutyToggleAt = 0;
+  uint32_t dutyOnSeconds = 0;   // active cycle signature (0 = stopped)
+  uint32_t dutyOffSeconds = 0;
+  // Humidity band debounce.
+  HumidityBand currentBand = HumidityBand::Unknown;   // candidate from latest RH
+  HumidityBand engagedBand = HumidityBand::Unknown;   // acted-upon band (after hold)
+  uint32_t bandEnteredAt = 0;
+  // Infrastructure timers.
   uint32_t lastStatusAt = 0;
   uint32_t lastControllerAt = 0;
   uint32_t lastMqttRetry = 0;
   uint32_t lastWifiRetry = 0;
   uint32_t relayCommandSuppressUntil = 0;
-  uint32_t fanCommandLockUntil = 0;
-  uint32_t mistCommandLockUntil = 0;
+  uint32_t relayBootSuppressUntil = 0;
   uint32_t lastRelayCommandAt = 0;
-  bool manualFanHold = false;
-  bool manualMistHold = false;
 };
 
 struct MonotubState {

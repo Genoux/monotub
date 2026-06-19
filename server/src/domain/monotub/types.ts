@@ -1,18 +1,23 @@
-export type FanReason =
-  | 'off'
-  | 'manual'
-  | 'scheduled_fae'
-  | 'humidity_correction';
+export type FanReason = 'off' | 'manual' | 'fae' | 'vent';
 
-export type MistReason = 'off' | 'manual' | 'low_humidity';
+export type MistReason = 'manual' | 'humidity_automation';
+
+export type HumidityBand =
+  | 'unknown'
+  | 'too_dry'
+  | 'recovering'
+  | 'healthy'
+  | 'drying'
+  | 'too_wet';
 
 export type FanStatus = {
-  on_seconds: number;
-  off_seconds: number;
-  routine: boolean;
   fan: boolean;
-  manual_fan?: boolean;
   mist?: boolean;
+  manual_fan?: boolean;
+  manual_mist?: boolean;
+  automation_mist?: boolean;
+  fan_reason?: FanReason;
+  mist_reason?: MistReason;
   uptime_s: number;
   rssi: number;
   ip?: string;
@@ -21,41 +26,34 @@ export type FanStatus = {
   environment_ok?: boolean;
   smoothed_humidity_percent?: number;
   automation_enabled?: boolean;
-  fan_reason?: FanReason;
-  mist_reason?: MistReason;
-  humidity_low_threshold?: number;
-  humidity_high_threshold?: number;
-  humidity_low_persist_seconds?: number;
-  humidity_high_persist_seconds?: number;
-  mist_pulse_seconds?: number;
-  corrective_fan_seconds?: number;
-  mist_cooldown_seconds?: number;
-  fan_cooldown_seconds?: number;
-  mist_cooldown_remaining_s?: number;
-  fan_cooldown_remaining_s?: number;
-  mist_pulse_remaining_s?: number;
-  corrective_fan_remaining_s?: number;
-  scheduled_fae_on_seconds?: number;
-  scheduled_fae_off_seconds?: number;
-  scheduled_fae_on?: boolean;
-  next_scheduled_fae_s?: number;
+  simulation_enabled?: boolean;
+  simulated_humidity_percent?: number;
+  // Band model.
+  rh_dry_below?: number;
+  rh_band_low?: number;
+  rh_band_high?: number;
+  rh_wet_above?: number;
+  band_hold_seconds?: number;
+  current_band?: HumidityBand;
+  band_hold_remaining_s?: number;
+  // Fan cycle.
+  vent_on_seconds?: number;
+  vent_off_seconds?: number;
+  duty_fan_on?: boolean;
+  next_duty_toggle_s?: number;
 };
 
 export type DesiredFanState = {
-  routine: boolean | null;
   manual_fan: boolean | null;
-  on_seconds: number | null;
-  off_seconds: number | null;
   mist: boolean | null;
   automation_enabled: boolean | null;
-  humidity_low_threshold: number | null;
-  humidity_high_threshold: number | null;
-  humidity_low_persist_seconds: number | null;
-  humidity_high_persist_seconds: number | null;
-  mist_pulse_seconds: number | null;
-  corrective_fan_seconds: number | null;
-  mist_cooldown_seconds: number | null;
-  fan_cooldown_seconds: number | null;
+  rh_dry_below: number | null;
+  rh_band_low: number | null;
+  rh_band_high: number | null;
+  rh_wet_above: number | null;
+  band_hold_seconds: number | null;
+  vent_on_seconds: number | null;
+  vent_off_seconds: number | null;
   updatedAt: string | null;
 };
 

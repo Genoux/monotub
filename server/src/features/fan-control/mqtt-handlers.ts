@@ -1,5 +1,6 @@
 import { applyMqttMessage } from '../../domain/monotub/state';
 import { monotubTopics } from '../../domain/monotub/topics';
+import { logMqttRecv } from '../../infrastructure/mqtt-log';
 import type { MonotubState } from '../../domain/monotub/types';
 
 export const handleFanControlMqttMessage = (
@@ -9,7 +10,7 @@ export const handleFanControlMqttMessage = (
 ): void => {
   const message = payload.toString();
   const receivedAt = new Date().toISOString();
-  console.log(`[recv] ${topic} = ${message}`);
+  logMqttRecv(topic, message);
   applyMqttMessage(state, topic, message, receivedAt, {
     connected: monotubTopics.connected,
     fanState: monotubTopics.fanState,

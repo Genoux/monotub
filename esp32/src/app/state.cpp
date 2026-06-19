@@ -6,10 +6,8 @@ const char* fanReasonName(FanReason reason) {
   switch (reason) {
     case FanReason::Manual:
       return "manual";
-    case FanReason::ScheduledFae:
-      return "scheduled_fae";
-    case FanReason::HumidityCorrection:
-      return "humidity_correction";
+    case FanReason::Vent:
+      return "vent";
     case FanReason::Off:
     default:
       return "off";
@@ -18,12 +16,10 @@ const char* fanReasonName(FanReason reason) {
 
 const char* mistReasonName(MistReason reason) {
   switch (reason) {
+    case MistReason::HumidityAutomation:
+      return "humidity_automation";
     case MistReason::Manual:
-      return "manual";
-    case MistReason::LowHumidity:
-      return "low_humidity";
-    case MistReason::Off:
     default:
-      return "off";
+      return "manual";
   }
 }

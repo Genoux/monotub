@@ -5,76 +5,106 @@
 
 namespace {
 Preferences store;
+
+// v2 stored two thresholds (rh_low/rh_high) plus derived soft offsets.
+// v3 stores four explicit band edges. Map the old pair onto the new edges so a
+// device keeps the same comfort band it was tuned to.
+void migrateV2ToV3() {
+  store.begin("monotub", true);
+  const bool hasLegacy = store.isKey("rh_low") && store.isKey("rh_high");
+  const float legacyLow = store.getFloat("rh_low", DEFAULT_RH_DRY_BELOW);
+  const float legacyHigh = store.getFloat("rh_high", DEFAULT_RH_WET_ABOVE);
+  store.end();
+
+  if (hasLegacy) {
+    g.humiditySettings.rhDryBelow = legacyLow;
+    g.humiditySettings.rhBandLow = legacyLow + 1.0F;
+    g.humiditySettings.rhBandHigh = legacyHigh - 2.0F;
+    g.humiditySettings.rhWetAbove = legacyHigh;
+  }
 }
+}  // namespace
 
 void prefsLoad() {
   store.begin("monotub", true);
-  g.fanSettings.scheduledOnSeconds =
-      store.getUInt("on_sec", DEFAULT_ON_SECONDS);
-  g.fanSettings.scheduledOffSeconds =
-      store.getUInt("off_sec", DEFAULT_OFF_SECONDS);
-  g.fanSettings.routineEnabled =
-      store.getBool("routine", DEFAULT_ROUTINE_ENABLED);
+  const bool seeded = store.getBool("relay_seeded", false);
+  const uint32_t settingsVersion = store.getUInt("set_ver", 0);
+
+  g.fanSettings.ventOnSeconds = store.getUInt("vent_on", DEFAULT_VENT_ON_SECONDS);
+  g.fanSettings.ventOffSeconds =
+      store.getUInt("vent_off", DEFAULT_VENT_OFF_SECONDS);
+
   g.humiditySettings.automationEnabled =
       store.getBool("auto", DEFAULT_AUTOMATION_ENABLED);
-  g.humiditySettings.lowRhPercent =
-      store.getFloat("rh_low", DEFAULT_RH_LOW_PERCENT);
-  g.humiditySettings.highRhPercent =
-      store.getFloat("rh_high", DEFAULT_RH_HIGH_PERCENT);
-  g.humiditySettings.lowPersistSeconds =
-      store.getUInt("low_persist", DEFAULT_RH_LOW_PERSIST_SECONDS);
-  g.humiditySettings.highPersistSeconds =
-      store.getUInt("high_persist", DEFAULT_RH_HIGH_PERSIST_SECONDS);
-  g.humiditySettings.mistPulseSeconds =
-      store.getUInt("mist_pulse", DEFAULT_MIST_PULSE_SECONDS);
-  g.humiditySettings.fanPulseSeconds =
-      store.getUInt("fan_pulse", DEFAULT_CORRECTIVE_FAN_SECONDS);
-  g.humiditySettings.mistCooldownSeconds =
-      store.getUInt("mist_cd", DEFAULT_MIST_COOLDOWN_SECONDS);
-  g.humiditySettings.fanCooldownSeconds =
-      store.getUInt("fan_cd", DEFAULT_FAN_COOLDOWN_SECONDS);
-  // Do not restore scheduledFanOn — fan always starts OFF on boot.
-  // The routine timer fires naturally and sets it when ready.
-  g.actuators.scheduledFanOn = false;
-  g.actuators.fanOn  = store.getBool("relay_fan",  DEFAULT_RELAY_FAN_ON);
-  g.actuators.mistOn = store.getBool("relay_mist", DEFAULT_RELAY_MIST_ON);
+  g.humiditySettings.rhDryBelow =
+      store.getFloat("dry_below", DEFAULT_RH_DRY_BELOW);
+  g.humiditySettings.rhBandLow = store.getFloat("band_low", DEFAULT_RH_BAND_LOW);
+  g.humiditySettings.rhBandHigh =
+      store.getFloat("band_high", DEFAULT_RH_BAND_HIGH);
+  g.humiditySettings.rhWetAbove =
+      store.getFloat("wet_above", DEFAULT_RH_WET_ABOVE);
+  g.humiditySettings.bandHoldSeconds =
+      store.getUInt("band_hold", DEFAULT_BAND_HOLD_SECONDS);
+
+  if (seeded && store.isKey("fan_manual")) {
+    g.actuators.manualFanOn = store.getBool("fan_manual", false);
+  } else if (seeded) {
+    g.actuators.manualFanOn = store.getBool("relay_fan", false);
+  } else {
+    g.actuators.manualFanOn = false;
+  }
+  if (seeded && store.isKey("mist_manual")) {
+    g.actuators.manualMistOn = store.getBool("mist_manual", true);
+  } else if (seeded) {
+    g.actuators.manualMistOn = store.getBool("relay_mist", true);
+  } else {
+    g.actuators.manualMistOn = true;
+  }
+  g.actuators.automationMistOn = true;
+  g.actuators.dutyFanOn = false;
+  g.actuators.fanOn = false;
+  g.actuators.mistOn = false;
   store.end();
+
+  if (settingsVersion < SETTINGS_VERSION) {
+    if (settingsVersion < 3) migrateV2ToV3();
+    // v4: band_hold defaults to 0 (immediate). Reset any persisted non-zero value.
+    if (settingsVersion < 4) {
+      g.humiditySettings.bandHoldSeconds = DEFAULT_BAND_HOLD_SECONDS;
+    }
+    // v5: routine FAE removed. on_sec/off_sec/routine keys are orphaned but harmless.
+    // v6: conservative 60L polyfill defaults: short fan nudges, longer settle,
+    // higher wet edge, and a small band hold to avoid reacting to brief spikes.
+    if (settingsVersion < 6) {
+      g.fanSettings.ventOnSeconds = DEFAULT_VENT_ON_SECONDS;
+      g.fanSettings.ventOffSeconds = DEFAULT_VENT_OFF_SECONDS;
+      g.humiditySettings.rhWetAbove = DEFAULT_RH_WET_ABOVE;
+      g.humiditySettings.bandHoldSeconds = DEFAULT_BAND_HOLD_SECONDS;
+    }
+    prefsSave();
+  }
 }
 
 void prefsSaveRelayState() {
   store.begin("monotub", false);
-  store.putBool("relay_fan",    g.actuators.fanOn);
-  store.putBool("relay_mist",   g.actuators.mistOn);
+  store.putBool("relay_fan", g.actuators.fanOn);
+  store.putBool("relay_mist", g.actuators.mistOn);
   store.putBool("relay_seeded", true);
-  store.end();
-}
-
-void prefsLoadSchedulePhase() {
-  store.begin("monotub", true);
-  g.actuators.scheduledFanOn = store.getBool("sched_fan_on", true);
-  store.end();
-}
-
-void prefsSaveSchedulePhase() {
-  store.begin("monotub", false);
-  store.putBool("sched_fan_on", g.actuators.scheduledFanOn);
   store.end();
 }
 
 void prefsSave() {
   store.begin("monotub", false);
-  store.putUInt("on_sec", g.fanSettings.scheduledOnSeconds);
-  store.putUInt("off_sec", g.fanSettings.scheduledOffSeconds);
-  store.putBool("routine", g.fanSettings.routineEnabled);
-  store.putBool("sched_fan_on", g.actuators.scheduledFanOn);
+  store.putUInt("vent_on", g.fanSettings.ventOnSeconds);
+  store.putUInt("vent_off", g.fanSettings.ventOffSeconds);
   store.putBool("auto", g.humiditySettings.automationEnabled);
-  store.putFloat("rh_low", g.humiditySettings.lowRhPercent);
-  store.putFloat("rh_high", g.humiditySettings.highRhPercent);
-  store.putUInt("low_persist", g.humiditySettings.lowPersistSeconds);
-  store.putUInt("high_persist", g.humiditySettings.highPersistSeconds);
-  store.putUInt("mist_pulse", g.humiditySettings.mistPulseSeconds);
-  store.putUInt("fan_pulse", g.humiditySettings.fanPulseSeconds);
-  store.putUInt("mist_cd", g.humiditySettings.mistCooldownSeconds);
-  store.putUInt("fan_cd", g.humiditySettings.fanCooldownSeconds);
+  store.putFloat("dry_below", g.humiditySettings.rhDryBelow);
+  store.putFloat("band_low", g.humiditySettings.rhBandLow);
+  store.putFloat("band_high", g.humiditySettings.rhBandHigh);
+  store.putFloat("wet_above", g.humiditySettings.rhWetAbove);
+  store.putUInt("band_hold", g.humiditySettings.bandHoldSeconds);
+  store.putUInt("set_ver", SETTINGS_VERSION);
+  store.putBool("fan_manual", g.actuators.manualFanOn);
+  store.putBool("mist_manual", g.actuators.manualMistOn);
   store.end();
 }

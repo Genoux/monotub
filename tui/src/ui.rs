@@ -8,6 +8,11 @@ use crate::tabs;
 use crate::theme;
 
 pub fn render(frame: &mut Frame, app: &App) {
+    if app.is_offline() && !app.show_help {
+        tabs::render(frame, app, frame.area());
+        return;
+    }
+
     let [content_area, footer_area] =
         Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).areas(frame.area());
 
@@ -24,13 +29,13 @@ fn render_footer(frame: &mut Frame, area: ratatui::layout::Rect, app: &App) {
         return;
     }
 
-    let section_cmds = if app.edit_field.is_some() {
-        "Enter save  Esc cancel"
-    } else {
-        app.focused_section.commands()
-    };
+    let section_cmds = app.focused_section.commands();
 
-    let logs_label = if app.show_logs_strip { "l logs*" } else { "l logs" };
+    let logs_label = if app.show_logs_strip {
+        "l logs*"
+    } else {
+        "l logs"
+    };
 
     frame.render_widget(
         Paragraph::new(Line::from(vec![

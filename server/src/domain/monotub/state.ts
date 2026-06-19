@@ -9,20 +9,16 @@ export const createInitialState = (): MonotubState => ({
   status: null,
   logs: [],
   desired: {
-    routine: null,
     manual_fan: null,
-    on_seconds: null,
-    off_seconds: null,
     mist: null,
     automation_enabled: null,
-    humidity_low_threshold: null,
-    humidity_high_threshold: null,
-    humidity_low_persist_seconds: null,
-    humidity_high_persist_seconds: null,
-    mist_pulse_seconds: null,
-    corrective_fan_seconds: null,
-    mist_cooldown_seconds: null,
-    fan_cooldown_seconds: null,
+    rh_dry_below: null,
+    rh_band_low: null,
+    rh_band_high: null,
+    rh_wet_above: null,
+    band_hold_seconds: null,
+    vent_on_seconds: null,
+    vent_off_seconds: null,
     updatedAt: null,
   },
   lastSeenAt: null,
@@ -34,56 +30,34 @@ const syncEmptyDesiredFromStatus = (state: MonotubState): void => {
   if (!state.status) return;
 
   state.desired = {
-    routine: state.desired.routine ?? state.status.routine,
     manual_fan: state.desired.manual_fan ?? state.status.manual_fan ?? null,
-    on_seconds: state.desired.on_seconds ?? state.status.on_seconds,
-    off_seconds: state.desired.off_seconds ?? state.status.off_seconds,
-    mist: state.desired.mist ?? state.status.mist ?? null,
+    mist:
+      state.status.automation_enabled === true
+        ? state.status.automation_mist ?? state.status.mist ?? null
+        : state.desired.mist ??
+          state.status.manual_mist ??
+          state.status.mist ??
+          null,
     automation_enabled:
       state.desired.automation_enabled ??
       state.status.automation_enabled ??
       null,
-    humidity_low_threshold:
-      state.desired.humidity_low_threshold ??
-      state.status.humidity_low_threshold ??
-      null,
-    humidity_high_threshold:
-      state.desired.humidity_high_threshold ??
-      state.status.humidity_high_threshold ??
-      null,
-    humidity_low_persist_seconds:
-      state.desired.humidity_low_persist_seconds ??
-      state.status.humidity_low_persist_seconds ??
-      null,
-    humidity_high_persist_seconds:
-      state.desired.humidity_high_persist_seconds ??
-      state.status.humidity_high_persist_seconds ??
-      null,
-    mist_pulse_seconds:
-      state.desired.mist_pulse_seconds ?? state.status.mist_pulse_seconds ?? null,
-    corrective_fan_seconds:
-      state.desired.corrective_fan_seconds ??
-      state.status.corrective_fan_seconds ??
-      null,
-    mist_cooldown_seconds:
-      state.desired.mist_cooldown_seconds ??
-      state.status.mist_cooldown_seconds ??
-      null,
-    fan_cooldown_seconds:
-      state.desired.fan_cooldown_seconds ??
-      state.status.fan_cooldown_seconds ??
-      null,
+    rh_dry_below:
+      state.desired.rh_dry_below ?? state.status.rh_dry_below ?? null,
+    rh_band_low:
+      state.desired.rh_band_low ?? state.status.rh_band_low ?? null,
+    rh_band_high:
+      state.desired.rh_band_high ?? state.status.rh_band_high ?? null,
+    rh_wet_above:
+      state.desired.rh_wet_above ?? state.status.rh_wet_above ?? null,
+    band_hold_seconds:
+      state.desired.band_hold_seconds ?? state.status.band_hold_seconds ?? null,
+    vent_on_seconds:
+      state.desired.vent_on_seconds ?? state.status.vent_on_seconds ?? null,
+    vent_off_seconds:
+      state.desired.vent_off_seconds ?? state.status.vent_off_seconds ?? null,
     updatedAt: state.desired.updatedAt,
   };
-};
-
-export const setDesiredRoutine = (
-  state: MonotubState,
-  routine: boolean,
-  updatedAt = new Date().toISOString(),
-): void => {
-  state.desired.routine = routine;
-  state.desired.updatedAt = updatedAt;
 };
 
 export const setDesiredManualFan = (
@@ -92,24 +66,6 @@ export const setDesiredManualFan = (
   updatedAt = new Date().toISOString(),
 ): void => {
   state.desired.manual_fan = manualFan;
-  state.desired.updatedAt = updatedAt;
-};
-
-export const setDesiredOnSeconds = (
-  state: MonotubState,
-  seconds: number,
-  updatedAt = new Date().toISOString(),
-): void => {
-  state.desired.on_seconds = seconds;
-  state.desired.updatedAt = updatedAt;
-};
-
-export const setDesiredOffSeconds = (
-  state: MonotubState,
-  seconds: number,
-  updatedAt = new Date().toISOString(),
-): void => {
-  state.desired.off_seconds = seconds;
   state.desired.updatedAt = updatedAt;
 };
 
@@ -126,14 +82,13 @@ type AutomationDesiredPatch = Partial<
   Pick<
     MonotubState['desired'],
     | 'automation_enabled'
-    | 'humidity_low_threshold'
-    | 'humidity_high_threshold'
-    | 'humidity_low_persist_seconds'
-    | 'humidity_high_persist_seconds'
-    | 'mist_pulse_seconds'
-    | 'corrective_fan_seconds'
-    | 'mist_cooldown_seconds'
-    | 'fan_cooldown_seconds'
+    | 'rh_dry_below'
+    | 'rh_band_low'
+    | 'rh_band_high'
+    | 'rh_wet_above'
+    | 'band_hold_seconds'
+    | 'vent_on_seconds'
+    | 'vent_off_seconds'
   >
 >;
 
@@ -149,23 +104,25 @@ export const setDesiredAutomationSettings = (
   };
 };
 
-/** Align countdown with ESP32 schedule timer (not stale fan-edge timestamps). */
+const dutyPhaseSeconds = (status: NonNullable<MonotubState['status']>, on: boolean): number => {
+  if (on) return status.vent_on_seconds ?? 5;
+  return status.vent_off_seconds ?? 90;
+};
+
+/** Align countdown with the ESP32 duty-cycle timer (not stale fan-edge timestamps). */
 export const syncScheduleTransitions = (
   state: MonotubState,
   receivedAt: string,
 ): void => {
   const status = state.status;
-  if (!status?.routine) {
+  const remainingSec = status?.next_duty_toggle_s;
+  if (!status || remainingSec == null || remainingSec <= 0) {
     state.nextTransitionAt = null;
     return;
   }
-  if (status.next_scheduled_fae_s == null) {
-    return;
-  }
 
-  const remainingSec = status.next_scheduled_fae_s;
-  const phaseOn = status.scheduled_fae_on ?? state.fan === 'ON';
-  const phaseSec = phaseOn ? status.on_seconds : status.off_seconds;
+  const phaseOn = status.duty_fan_on ?? state.fan === 'ON';
+  const phaseSec = dutyPhaseSeconds(status, phaseOn);
   const received = new Date(receivedAt);
   const elapsedSec = Math.max(0, phaseSec - remainingSec);
 
@@ -181,24 +138,21 @@ export const recomputeNextTransition = (
   state: MonotubState,
   receivedAt?: string,
 ): void => {
-  if (!state.status?.routine) {
+  const status = state.status;
+  if (!status) {
     state.nextTransitionAt = null;
     return;
   }
-  if (
-    state.status.next_scheduled_fae_s != null &&
-    receivedAt != null
-  ) {
+  if (status.next_duty_toggle_s != null && receivedAt != null) {
     syncScheduleTransitions(state, receivedAt);
     return;
   }
 
-  if (!state.lastTransitionAt || !state.fan) {
+  if (!status.duty_fan_on || !state.lastTransitionAt || !state.fan) {
     state.nextTransitionAt = null;
     return;
   }
-  const durationSec =
-    state.fan === 'ON' ? state.status.on_seconds : state.status.off_seconds;
+  const durationSec = dutyPhaseSeconds(status, state.fan === 'ON');
   const next = new Date(
     new Date(state.lastTransitionAt).getTime() + durationSec * 1000,
   );
@@ -226,7 +180,7 @@ export const applyMqttMessage = (
       break;
     case topics.fanState: {
       const newFan = message as MonotubState['fan'];
-      if (!state.status?.routine && newFan !== state.fan) {
+      if (!state.status?.automation_enabled && newFan !== state.fan) {
         state.lastTransitionAt = receivedAt;
       }
       state.fan = newFan;
@@ -251,12 +205,12 @@ export const applyMqttMessage = (
         break;
       }
       state.status = parsed;
-      if (state.status.mist != null) {
-        state.mist = state.status.mist ? 'ON' : 'OFF';
+      if (parsed?.mist != null) {
+        state.mist = parsed.mist ? 'ON' : 'OFF';
       }
-      if (state.status.fan != null) {
-        const newFan = state.status.fan ? 'ON' : 'OFF';
-        if (!state.status.routine && newFan !== state.fan) {
+      if (parsed?.fan != null) {
+        const newFan = parsed.fan ? 'ON' : 'OFF';
+        if (!parsed.automation_enabled && newFan !== state.fan) {
           state.lastTransitionAt = receivedAt;
         }
         state.fan = newFan;

@@ -11,12 +11,13 @@ uint32_t remainingSeconds(uint32_t until) {
 }  // namespace
 
 void telemetryWriteStatus(JsonDocument& doc) {
-  doc["on_seconds"] = g.fanSettings.scheduledOnSeconds;
-  doc["off_seconds"] = g.fanSettings.scheduledOffSeconds;
-  doc["routine"] = g.fanSettings.routineEnabled;
   doc["fan"] = g.actuators.fanOn;
-  doc["manual_fan"] = g.actuators.manualFanOn;
   doc["mist"] = g.actuators.mistOn;
+  doc["manual_fan"] = g.actuators.manualFanOn;
+  doc["manual_mist"] = g.actuators.manualMistOn;
+  doc["automation_mist"] = g.actuators.automationMistOn;
+  doc["fan_reason"] = fanReasonName(g.actuators.fanReason);
+  doc["mist_reason"] = mistReasonName(g.actuators.mistReason);
   doc["uptime_s"] = millis() / 1000;
   doc["rssi"] = WiFi.RSSI();
   doc["ip"] = WiFi.localIP().toString();
@@ -30,21 +31,21 @@ void telemetryWriteStatus(JsonDocument& doc) {
   }
 
   doc["automation_enabled"] = g.humiditySettings.automationEnabled;
-  doc["fan_reason"] = fanReasonName(g.actuators.fanReason);
-  doc["mist_reason"] = mistReasonName(g.actuators.mistReason);
-  doc["humidity_low_threshold"] = g.humiditySettings.lowRhPercent;
-  doc["humidity_high_threshold"] = g.humiditySettings.highRhPercent;
-  doc["humidity_low_persist_seconds"] = g.humiditySettings.lowPersistSeconds;
-  doc["humidity_high_persist_seconds"] = g.humiditySettings.highPersistSeconds;
-  doc["mist_pulse_seconds"] = g.humiditySettings.mistPulseSeconds;
-  doc["corrective_fan_seconds"] = g.humiditySettings.fanPulseSeconds;
-  doc["mist_cooldown_seconds"] = g.humiditySettings.mistCooldownSeconds;
-  doc["fan_cooldown_seconds"] = g.humiditySettings.fanCooldownSeconds;
-  doc["mist_cooldown_remaining_s"] = humidityMistCooldownRemainingSeconds();
-  doc["fan_cooldown_remaining_s"] = humidityFanCooldownRemainingSeconds();
-  doc["mist_pulse_remaining_s"] = remainingSeconds(g.runtime.mistPulseUntil);
-  doc["corrective_fan_remaining_s"] =
-      remainingSeconds(g.runtime.correctiveFanUntil);
-  doc["scheduled_fae_on"] = g.actuators.scheduledFanOn;
-  doc["next_scheduled_fae_s"] = remainingSeconds(g.runtime.nextScheduledFanToggleAt);
+  doc["simulation_enabled"] = g.environment.simulationEnabled;
+  doc["simulated_humidity_percent"] = g.environment.simulatedHumidityPercent;
+
+  // Band model — the whole control law is described by these fields.
+  doc["rh_dry_below"] = g.humiditySettings.rhDryBelow;
+  doc["rh_band_low"] = g.humiditySettings.rhBandLow;
+  doc["rh_band_high"] = g.humiditySettings.rhBandHigh;
+  doc["rh_wet_above"] = g.humiditySettings.rhWetAbove;
+  doc["band_hold_seconds"] = g.humiditySettings.bandHoldSeconds;
+  doc["current_band"] = humidityBandName(g.runtime.engagedBand);
+  doc["band_hold_remaining_s"] = bandHoldRemainingSeconds();
+
+  // Fan cycle.
+  doc["vent_on_seconds"] = g.fanSettings.ventOnSeconds;
+  doc["vent_off_seconds"] = g.fanSettings.ventOffSeconds;
+  doc["duty_fan_on"] = g.actuators.dutyFanOn;
+  doc["next_duty_toggle_s"] = remainingSeconds(g.runtime.nextDutyToggleAt);
 }
