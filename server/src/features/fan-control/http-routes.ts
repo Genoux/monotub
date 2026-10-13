@@ -3,15 +3,20 @@ import {
 	setDesiredAutomationSettings,
 	setDesiredManualFan,
 	setDesiredMist,
+	toStateView,
 } from "../../domain/monotub/state";
 import { monotubTopics } from "../../domain/monotub/topics";
 import type { MonotubState } from "../../domain/monotub/types";
+import type { StateEvents } from "../../infrastructure/state-events";
 
 type FanControlHttpDeps = {
 	brokerUrl: string;
 	getState: () => MonotubState;
 	publish: (topic: string, message: string) => void;
+	events: StateEvents;
 };
+
+const SSE_KEEPALIVE_MS = 15_000;
 
 const automationFieldTopics = {
 	automation_enabled: monotubTopics.automationEnabledSet,
@@ -62,18 +67,41 @@ const validateAutomationPatch = (
 
 export const registerFanControlHttpRoutes = (
 	app: Express,
-	{ brokerUrl, getState, publish }: FanControlHttpDeps,
+	{ brokerUrl, getState, publish, events }: FanControlHttpDeps,
 ): void => {
 	app.get("/api", (_req: Request, res: Response) => {
 		res.json({
 			service: "monotub-mqtt-server",
 			broker: brokerUrl,
-			state: getState(),
+			state: toStateView(getState()),
 		});
 	});
 
 	app.get("/state", (_req: Request, res: Response) => {
-		res.json(getState());
+		res.json(toStateView(getState()));
+	});
+
+	// Server-sent events: the /state body on connect and on every change.
+	app.get("/events", (req: Request, res: Response) => {
+		res.set({
+			"Content-Type": "text/event-stream",
+			"Cache-Control": "no-cache",
+			Connection: "keep-alive",
+			"X-Accel-Buffering": "no",
+		});
+		res.flushHeaders();
+
+		const send = () => {
+			res.write(`event: state\ndata: ${JSON.stringify(toStateView(getState()))}\n\n`);
+		};
+		send();
+		const unsubscribe = events.subscribe(send);
+		const keepalive = setInterval(() => res.write(": keepalive\n\n"), SSE_KEEPALIVE_MS);
+
+		req.on("close", () => {
+			clearInterval(keepalive);
+			unsubscribe();
+		});
 	});
 
 	app.post("/sync", (_req: Request, res: Response) => {

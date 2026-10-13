@@ -13,6 +13,7 @@ type MqttBridge = {
 export const connectMqttBridge = (
   brokerUrl: string,
   state: MonotubState,
+  onStateChange: () => void,
 ): MqttBridge => {
   const client = mqtt.connect(brokerUrl);
 
@@ -32,8 +33,9 @@ export const connectMqttBridge = (
     ),
   );
 
-  client.on('message', (topic, payload) => {
-    handleFanControlMqttMessage(state, topic, payload);
+  client.on('message', (topic, payload, packet) => {
+    handleFanControlMqttMessage(state, topic, payload, packet.retain);
+    onStateChange();
   });
 
   const publish = (topic: string, message: string) => {
