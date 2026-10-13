@@ -7,6 +7,7 @@ export const handleFanControlMqttMessage = (
   state: MonotubState,
   topic: string,
   payload: Buffer,
+  retained = false,
 ): void => {
   const message = payload.toString();
   const receivedAt = new Date().toISOString();
@@ -17,5 +18,5 @@ export const handleFanControlMqttMessage = (
     mistState: monotubTopics.mistState,
     status: monotubTopics.status,
     log: monotubTopics.log,
-  });
+  }, retained);
 };

@@ -73,3 +73,10 @@ export type MonotubState = {
   lastTransitionAt: string | null;
   nextTransitionAt: string | null;
 };
+
+export type MonotubStateView = MonotubState & {
+  /** A non-retained message arrived within OFFLINE_AFTER_SECONDS and no LWT. */
+  online: boolean;
+  /** Seconds since the last message from the board, null if none yet. */
+  age_s: number | null;
+};

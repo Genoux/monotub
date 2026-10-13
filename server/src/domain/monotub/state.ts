@@ -1,6 +1,9 @@
-import type { MonotubState } from './types';
+import type { MonotubState, MonotubStateView } from './types';
 
 const MAX_LOG_ENTRIES = 50;
+
+/** The ESP32 reports every 10 s; three missed reports means it is gone. */
+export const OFFLINE_AFTER_SECONDS = 30;
 
 export const createInitialState = (): MonotubState => ({
   connected: null,
@@ -102,6 +105,11 @@ export const setDesiredAutomationSettings = (
     ...patch,
     updatedAt,
   };
+  // Mirror the ESP32: manual mode starts from the current outputs.
+  if (patch.automation_enabled === false) {
+    if (state.fan) state.desired.manual_fan = state.fan === 'ON';
+    if (state.mist) state.desired.mist = state.mist === 'ON';
+  }
 };
 
 const dutyPhaseSeconds = (status: NonNullable<MonotubState['status']>, on: boolean): number => {
@@ -171,8 +179,11 @@ export const applyMqttMessage = (
     status: string;
     log: string;
   },
+  retained = false,
 ): void => {
-  state.lastSeenAt = receivedAt;
+  // Retained messages are the broker replaying old news on subscribe, not
+  // the board talking, so they must not make a dead board look online.
+  if (!retained) state.lastSeenAt = receivedAt;
 
   switch (topic) {
     case topics.connected:
@@ -225,4 +236,20 @@ export const applyMqttMessage = (
       break;
     }
   }
+};
+
+/** /state body: the raw state plus how fresh it is. */
+export const toStateView = (
+  state: MonotubState,
+  now = Date.now(),
+): MonotubStateView => {
+  const age_s =
+    state.lastSeenAt == null
+      ? null
+      : Math.max(0, Math.round((now - Date.parse(state.lastSeenAt)) / 1000));
+  const online =
+    state.connected !== 'offline' &&
+    age_s != null &&
+    age_s < OFFLINE_AFTER_SECONDS;
+  return { ...state, online, age_s };
 };
