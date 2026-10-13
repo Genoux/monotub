@@ -18,6 +18,9 @@ type FanControlHttpDeps = {
 
 const SSE_KEEPALIVE_MS = 15_000;
 
+const automationLocked = (state: MonotubState): boolean =>
+	state.status?.automation_enabled === true;
+
 const automationFieldTopics = {
 	automation_enabled: monotubTopics.automationEnabledSet,
 	rh_dry_below: monotubTopics.humidityDryBelowSet,
@@ -135,7 +138,7 @@ export const registerFanControlHttpRoutes = (
 	});
 
 	app.post("/fan", (req: Request, res: Response) => {
-		if (getState().status?.automation_enabled === true) {
+		if (automationLocked(getState())) {
 			res.status(409).json({ error: "manual fan control requires automation off" });
 			return;
 		}
@@ -146,27 +149,36 @@ export const registerFanControlHttpRoutes = (
 		}
 		publish(monotubTopics.fanSet, enabled ? "ON" : "OFF");
 		setDesiredManualFan(getState(), enabled);
-		res.json({ ok: true });
+		events.emit();
+		res.json({ ok: true, fan: enabled, desired: getState().desired });
 	});
 
 	app.post("/fan/toggle", (_req: Request, res: Response) => {
 		const state = getState();
-		if (state.status?.automation_enabled === true) {
+		if (automationLocked(state)) {
 			res.status(409).json({ error: "manual fan control requires automation off" });
 			return;
 		}
 		const current =
-			state.desired.manual_fan ??
-			state.status?.manual_fan ??
-			state.status?.fan ??
-			false;
+			state.desired.manual_fan ?? state.status?.manual_fan ?? state.status?.fan;
+		if (current == null) {
+			res.status(409).json({
+				error: "fan state unknown until the board reports; use POST /fan",
+			});
+			return;
+		}
 		const next = !current;
 		publish(monotubTopics.fanSet, "TOGGLE");
 		setDesiredManualFan(state, next);
-		res.json({ ok: true, fan: next });
+		events.emit();
+		res.json({ ok: true, fan: next, desired: state.desired });
 	});
 
 	app.post("/mist", (req: Request, res: Response) => {
+		if (automationLocked(getState())) {
+			res.status(409).json({ error: "manual mist control requires automation off" });
+			return;
+		}
 		const enabled = req.body?.enabled;
 		if (typeof enabled !== "boolean") {
 			res.status(400).json({ error: "body.enabled must be boolean" });
@@ -174,20 +186,29 @@ export const registerFanControlHttpRoutes = (
 		}
 		publish(monotubTopics.mistSet, enabled ? "ON" : "OFF");
 		setDesiredMist(getState(), enabled);
-		res.json({ ok: true });
+		events.emit();
+		res.json({ ok: true, mist: enabled, desired: getState().desired });
 	});
 
 	app.post("/mist/toggle", (_req: Request, res: Response) => {
 		const state = getState();
+		if (automationLocked(state)) {
+			res.status(409).json({ error: "manual mist control requires automation off" });
+			return;
+		}
 		const current =
-			state.desired.mist ??
-			state.status?.manual_mist ??
-			state.status?.mist ??
-			true;
+			state.desired.mist ?? state.status?.manual_mist ?? state.status?.mist;
+		if (current == null) {
+			res.status(409).json({
+				error: "mist state unknown until the board reports; use POST /mist",
+			});
+			return;
+		}
 		const next = !current;
 		publish(monotubTopics.mistSet, "TOGGLE");
 		setDesiredMist(state, next);
-		res.json({ ok: true, mist: next });
+		events.emit();
+		res.json({ ok: true, mist: next, desired: state.desired });
 	});
 
 	app.post("/automation-settings", (req: Request, res: Response) => {
@@ -207,6 +228,7 @@ export const registerFanControlHttpRoutes = (
 			},
 		);
 		setDesiredAutomationSettings(getState(), patch);
-		res.json({ ok: true });
+		events.emit();
+		res.json({ ok: true, desired: getState().desired });
 	});
 };
