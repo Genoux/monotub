@@ -126,6 +126,13 @@ ActuatorChanges controllerSetAutomationEnabled(bool enabled) {
     return controllerApplyOutputs();
   }
 
+  if (!enabled) {
+    // Hand over without a jump: manual mode starts from whatever the relays
+    // are doing now, not from a manual state saved before automation ran.
+    g.actuators.manualFanOn = g.actuators.fanOn;
+    g.actuators.manualMistOn = g.actuators.mistOn;
+  }
+
   g.humiditySettings.automationEnabled = enabled;
   if (enabled) {
     resetBandTracking();
