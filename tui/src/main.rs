@@ -21,7 +21,11 @@ use crate::app::App;
 #[derive(Parser, Debug)]
 #[command(name = "monotub-tui", about = "Terminal UI for monotub fan control")]
 struct Cli {
-    #[arg(long, default_value = "http://localhost:8001")]
+    #[arg(
+        long,
+        env = "MONOTUB_API_URL",
+        default_value = "https://homeserver.tail2e56f0.ts.net:8001"
+    )]
     api_url: String,
 }
 
@@ -30,8 +34,8 @@ fn main() -> Result<()> {
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
 
-    let api = ApiClient::new(&cli.api_url);
-    let mut app = App::new(api);
+    let (api, api_url_tx) = ApiClient::new(&cli.api_url);
+    let mut app = App::new(api, api_url_tx);
     app.spawn_poller();
 
     let mut terminal = ratatui::init();

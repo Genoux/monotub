@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use tokio::sync::watch;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct FanStatus {
@@ -70,20 +71,46 @@ pub struct DesiredFanState {
 
 #[derive(Clone)]
 pub struct ApiClient {
-    base_url: String,
+    base_url_rx: watch::Receiver<String>,
     http: reqwest::Client,
 }
 
+pub fn normalize_server_url(input: &str) -> String {
+    let mut url = input.trim().trim_end_matches('/').to_string();
+    if let Some(stripped) = url.strip_suffix("/api") {
+        url = stripped.trim_end_matches('/').to_string();
+    }
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        url = format!("http://{url}");
+    }
+    let host_part = url
+        .split_once("://")
+        .map(|(_, rest)| rest.split('/').next().unwrap_or(rest))
+        .unwrap_or(url.as_str());
+    if !host_part.contains(':') {
+        url = format!("{url}:8001");
+    }
+    url
+}
+
 impl ApiClient {
-    pub fn new(base_url: impl Into<String>) -> Self {
-        Self {
-            base_url: base_url.into().trim_end_matches('/').to_string(),
-            http: reqwest::Client::new(),
-        }
+    pub fn new(base_url: impl Into<String>) -> (Self, watch::Sender<String>) {
+        let (tx, rx) = watch::channel(normalize_server_url(&base_url.into()));
+        (
+            Self {
+                base_url_rx: rx,
+                http: reqwest::Client::new(),
+            },
+            tx,
+        )
+    }
+
+    pub fn base_url(&self) -> String {
+        self.base_url_rx.borrow().clone()
     }
 
     pub async fn fetch_state(&self) -> Result<DeviceState> {
-        let url = format!("{}/state", self.base_url);
+        let url = format!("{}/state", self.base_url());
         self.http
             .get(&url)
             .send()
@@ -97,31 +124,31 @@ impl ApiClient {
     }
 
     pub async fn request_sync(&self) -> Result<()> {
-        let url = format!("{}/sync", self.base_url);
+        let url = format!("{}/sync", self.base_url());
         self.http.post(&url).send().await?.error_for_status()?;
         Ok(())
     }
 
     pub async fn resync_relays(&self) -> Result<()> {
-        let url = format!("{}/relay/resync", self.base_url);
+        let url = format!("{}/relay/resync", self.base_url());
         self.http.post(&url).send().await?.error_for_status()?;
         Ok(())
     }
 
     pub async fn toggle_fan(&self) -> Result<()> {
-        let url = format!("{}/fan/toggle", self.base_url);
+        let url = format!("{}/fan/toggle", self.base_url());
         self.http.post(&url).send().await?.error_for_status()?;
         Ok(())
     }
 
     pub async fn toggle_mist(&self) -> Result<()> {
-        let url = format!("{}/mist/toggle", self.base_url);
+        let url = format!("{}/mist/toggle", self.base_url());
         self.http.post(&url).send().await?.error_for_status()?;
         Ok(())
     }
 
     pub async fn set_automation(&self, enabled: bool) -> Result<()> {
-        let url = format!("{}/automation-settings", self.base_url);
+        let url = format!("{}/automation-settings", self.base_url());
         self.http
             .post(&url)
             .json(&serde_json::json!({ "automation_enabled": enabled }))
@@ -132,7 +159,7 @@ impl ApiClient {
     }
 
     pub async fn set_simulation(&self, enabled: bool) -> Result<()> {
-        let url = format!("{}/simulation", self.base_url);
+        let url = format!("{}/simulation", self.base_url());
         self.http
             .post(&url)
             .json(&serde_json::json!({ "enabled": enabled }))
@@ -143,7 +170,7 @@ impl ApiClient {
     }
 
     pub async fn set_simulated_humidity(&self, humidity: f32) -> Result<()> {
-        let url = format!("{}/simulation/humidity", self.base_url);
+        let url = format!("{}/simulation/humidity", self.base_url());
         self.http
             .post(&url)
             .json(&serde_json::json!({ "humidity": humidity }))
@@ -157,6 +184,30 @@ impl ApiClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn normalizes_ip_to_api_url() {
+        assert_eq!(
+            normalize_server_url("100.116.211.28"),
+            "http://100.116.211.28:8001"
+        );
+    }
+
+    #[test]
+    fn strips_api_suffix() {
+        assert_eq!(
+            normalize_server_url("http://100.116.211.28:8001/api"),
+            "http://100.116.211.28:8001"
+        );
+    }
+
+    #[test]
+    fn preserves_explicit_port() {
+        assert_eq!(
+            normalize_server_url("http://192.168.1.10:9000"),
+            "http://192.168.1.10:9000"
+        );
+    }
 
     #[test]
     fn parses_state_with_desired_values() {
@@ -187,7 +238,7 @@ mod tests {
     async fn fetch_state_from_running_server() {
         let base =
             std::env::var("MONOTUB_API_URL").unwrap_or_else(|_| "http://localhost:8001".into());
-        let client = ApiClient::new(base);
+        let (client, _) = ApiClient::new(base);
         let state = client
             .fetch_state()
             .await
