@@ -63,7 +63,7 @@ constexpr uint32_t SETTINGS_VERSION = 6;
 #define T_SIM_HUMIDITY_SET       "monotub/simulation/humidity/set"
 
 // Intervals
-constexpr uint32_t STATUS_INTERVAL_MS = 10000;
+constexpr uint32_t STATUS_INTERVAL_MS = 5000;
 constexpr uint16_t MQTT_CLIENT_BUFFER_BYTES = 2048;
 constexpr size_t STATUS_JSON_BYTES = 2048;
 constexpr uint32_t ENV_INTERVAL_MS = 5000;

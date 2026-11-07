@@ -1,7 +1,9 @@
 #include "services/prefs_store.h"
+#include "app/broker_address.h"
 #include "app/config.h"
 #include "app/state.h"
 #include <Preferences.h>
+#include "secrets.h"
 
 namespace {
 Preferences store;
@@ -64,6 +66,11 @@ void prefsLoad() {
   g.actuators.dutyFanOn = false;
   g.actuators.fanOn = false;
   g.actuators.mistOn = false;
+
+  char mqttHost[MQTT_HOST_MAX + 1] = {};
+  store.getString("mqtt_host", mqttHost, sizeof(mqttHost));
+  g.mqtt.host = mqttHost;
+  g.mqtt.port = store.getUShort("mqtt_port", MQTT_PORT);
   store.end();
 
   if (settingsVersion < SETTINGS_VERSION) {
@@ -90,6 +97,15 @@ void prefsSaveRelayState() {
   store.putBool("relay_fan", g.actuators.fanOn);
   store.putBool("relay_mist", g.actuators.mistOn);
   store.putBool("relay_seeded", true);
+  store.end();
+}
+
+void prefsSetMqttBroker(const char* host, uint16_t port) {
+  g.mqtt.host = host;
+  g.mqtt.port = port;
+  store.begin("monotub", false);
+  store.putString("mqtt_host", host);
+  store.putUShort("mqtt_port", port);
   store.end();
 }
 

@@ -78,12 +78,18 @@ struct RuntimeState {
   uint32_t lastRelayCommandAt = 0;
 };
 
+struct MqttSettings {
+  String host;
+  uint16_t port = 1883;
+};
+
 struct MonotubState {
   EnvironmentState environment;
   FanSettings fanSettings;
   HumiditySettings humiditySettings;
   ActuatorState actuators;
   RuntimeState runtime;
+  MqttSettings mqtt;
 };
 
 extern MonotubState g;
