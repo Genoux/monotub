@@ -82,7 +82,7 @@ pub fn handle_key(key: KeyEvent, app: &App) -> Option<AppCommand> {
 
 // ── section blocks ────────────────────────────────────────────────────────────
 
-fn section_block(title: &'static str, focused: bool) -> Block<'static> {
+fn section_block(title: impl Into<Line<'static>>, focused: bool) -> Block<'static> {
     if focused {
         Block::bordered()
             .title(title)
@@ -118,12 +118,33 @@ fn render_offline(frame: &mut Frame, area: Rect, app: &App) {
         ("(ᴗ_ ᴗ。)", "connecting…")
     };
 
-    let center = centered_area(area, 3);
-    let lines = vec![
+    let reason = if app.server_connecting {
+        "connecting…"
+    } else {
+        reason
+    };
+    let mut lines = vec![
         Line::from(Span::styled(emoji, theme::error())),
         Line::from(""),
         Line::from(Span::styled(reason, theme::error())),
     ];
+    if app.needs_server_setup() {
+        lines.extend([
+            Line::from(""),
+            Line::from(Span::styled("Server URL", theme::label())),
+            Line::from(vec![
+                Span::styled(app.server_url_buffer.clone(), theme::accent_bright()),
+                Span::styled("_", theme::accent()),
+            ]),
+            Line::from(""),
+            Line::from(Span::styled(
+                "Enter connect  Esc reset  Ctrl-C quit",
+                theme::muted(),
+            )),
+        ]);
+    }
+
+    let center = centered_area(area, lines.len() as u16);
     frame.render_widget(Paragraph::new(lines).alignment(Alignment::Center), center);
 }
 
@@ -480,7 +501,16 @@ fn render_device(frame: &mut Frame, area: Rect, app: &App) {
 // ── Log strip ────────────────────────────────────────────────────────────────
 
 fn render_log_strip(frame: &mut Frame, area: Rect, app: &App) {
-    let block = section_block("Events", false);
+    app.log_view_height
+        .set(area.height.saturating_sub(2).max(1) as usize);
+    let scroll = app.log_scroll_offset();
+    let title = if scroll > 0 {
+        format!("Events  ↑{scroll}  (End = live)")
+    } else {
+        "Events".to_string()
+    };
+
+    let block = section_block(title, scroll > 0);
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
@@ -488,6 +518,7 @@ fn render_log_strip(frame: &mut Frame, area: Rect, app: &App) {
         .logs
         .iter()
         .rev()
+        .skip(scroll)
         .take(inner.height as usize)
         .map(|line| styled_log_line(line))
         .collect();
@@ -526,6 +557,9 @@ fn render_help_overlay(frame: &mut Frame, area: Rect) {
         help_line("Tab / Shift+Tab", "navigate sections"),
         help_line("y", "resync relays (Device section)"),
         help_line("l", "toggle event log"),
+        help_line("↑↓ / j k", "scroll event log"),
+        help_line("PgUp / PgDn", "scroll event log by page"),
+        help_line("End", "jump back to newest event"),
         help_line("?", "toggle this help"),
         help_line("q", "quit"),
         Line::from(""),

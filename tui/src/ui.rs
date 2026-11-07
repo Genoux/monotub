@@ -32,7 +32,7 @@ fn render_footer(frame: &mut Frame, area: ratatui::layout::Rect, app: &App) {
     let section_cmds = app.focused_section.commands();
 
     let logs_label = if app.show_logs_strip {
-        "l logs*"
+        "l logs*  ↑↓ scroll"
     } else {
         "l logs"
     };

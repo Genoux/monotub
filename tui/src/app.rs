@@ -1,15 +1,18 @@
+use std::cell::Cell;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use chrono::Local;
-use ratatui::crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind};
-use tokio::sync::mpsc;
+use ratatui::crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use tokio::sync::{mpsc, watch};
 
-use crate::api::{ApiClient, DeviceState};
+use crate::api::{normalize_server_url, ApiClient, DeviceState, FanStatus};
 use crate::commands::AppCommand;
 use crate::tabs;
 
 const POLL_INTERVAL: Duration = Duration::from_secs(2);
+const LOG_CAPACITY: usize = 500;
+const LOG_PAGE: usize = 10;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FocusedSection {
@@ -84,24 +87,37 @@ impl LocalDeadlines {
 
 pub struct App {
     pub api: ApiClient,
+    api_url_tx: watch::Sender<String>,
     pub device_state: Option<DeviceState>,
     pub deadlines: LocalDeadlines,
     pub api_error: Option<String>,
+    pub server_url_buffer: String,
+    pub server_connecting: bool,
     pub last_poll_at: Option<String>,
     pub last_poll_latency_ms: Option<u128>,
     pub logs: Vec<String>,
+    pub log_scroll: usize,
+    /// Rows the event strip showed on the last frame; set by the renderer.
+    pub log_view_height: Cell<usize>,
     pub should_quit: bool,
     pub show_logs_strip: bool,
     pub show_help: bool,
     pub focused_section: FocusedSection,
     last_esp32_log_at: Option<String>,
-    state_rx: mpsc::UnboundedReceiver<StateUpdate>,
-    state_tx: mpsc::UnboundedSender<StateUpdate>,
+    state_rx: mpsc::UnboundedReceiver<TaggedUpdate>,
+    state_tx: mpsc::UnboundedSender<TaggedUpdate>,
+}
+
+/// The server URL a response came from, so a request still in flight when the
+/// URL changes cannot overwrite state fetched from the new server.
+struct TaggedUpdate {
+    url: String,
+    update: StateUpdate,
 }
 
 enum StateUpdate {
     Ok {
-        state: DeviceState,
+        state: Box<DeviceState>,
         latency_ms: u128,
     },
     Err {
@@ -120,16 +136,22 @@ enum AppAction {
 }
 
 impl App {
-    pub fn new(api: ApiClient) -> Self {
+    pub fn new(api: ApiClient, api_url_tx: watch::Sender<String>) -> Self {
+        let server_url_buffer = api.base_url();
         let (state_tx, state_rx) = mpsc::unbounded_channel();
         Self {
             api,
+            api_url_tx,
             device_state: None,
             deadlines: LocalDeadlines::new(),
             api_error: None,
+            server_url_buffer,
+            server_connecting: false,
             last_poll_at: None,
             last_poll_latency_ms: None,
             logs: vec![format_log("TUI started")],
+            log_scroll: 0,
+            log_view_height: Cell::new(1),
             should_quit: false,
             show_logs_strip: false,
             show_help: false,
@@ -140,8 +162,12 @@ impl App {
         }
     }
 
+    pub fn needs_server_setup(&self) -> bool {
+        self.api_error.is_some() || self.device_state.is_none()
+    }
+
     pub fn is_offline(&self) -> bool {
-        if self.api_error.is_some() || self.device_state.is_none() {
+        if self.needs_server_setup() {
             return true;
         }
         if self
@@ -168,18 +194,10 @@ impl App {
         let api = self.api.clone();
         let tx = self.state_tx.clone();
         tokio::spawn(async move {
+            let mut first_poll = true;
             loop {
-                let started_at = Instant::now();
-                let update = match request_fresh_state(&api).await {
-                    Ok(state) => StateUpdate::Ok {
-                        state,
-                        latency_ms: started_at.elapsed().as_millis(),
-                    },
-                    Err(err) => StateUpdate::Err {
-                        message: err.to_string(),
-                        latency_ms: started_at.elapsed().as_millis(),
-                    },
-                };
+                let update = poll_state(&api, first_poll).await;
+                first_poll = false;
                 if tx.send(update).is_err() {
                     break;
                 }
@@ -189,7 +207,11 @@ impl App {
     }
 
     pub fn drain_state_updates(&mut self) {
-        while let Ok(update) = self.state_rx.try_recv() {
+        while let Ok(TaggedUpdate { url, update }) = self.state_rx.try_recv() {
+            if url != self.api.base_url() {
+                continue;
+            }
+            self.server_connecting = false;
             self.last_poll_at = Some(Local::now().format("%H:%M:%S").to_string());
             match update {
                 StateUpdate::Ok { state, latency_ms } => {
@@ -201,7 +223,7 @@ impl App {
                     if let Some(status) = &state.status {
                         self.deadlines.update_from_status(status);
                     }
-                    self.device_state = Some(state);
+                    self.device_state = Some(*state);
                     self.api_error = None;
                 }
                 StateUpdate::Err {
@@ -224,8 +246,19 @@ impl App {
                 return Ok(());
             }
 
-            if self.api_error.is_some() {
-                self.handle_global_key(key);
+            if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
+                self.should_quit = true;
+                return Ok(());
+            }
+
+            // The URL field takes every printable key, so q, l, ?, j, k and Tab
+            // must not reach the global shortcuts while it is shown.
+            if self.needs_server_setup() {
+                if self.show_help {
+                    self.show_help = false;
+                } else {
+                    self.handle_server_setup_key(key);
+                }
                 return Ok(());
             }
 
@@ -250,6 +283,40 @@ impl App {
         }
     }
 
+    fn handle_server_setup_key(&mut self, key: KeyEvent) {
+        match key.code {
+            KeyCode::Enter => self.commit_server_url(),
+            KeyCode::Esc => self.server_url_buffer = self.api.base_url(),
+            KeyCode::Backspace => {
+                self.server_url_buffer.pop();
+            }
+            KeyCode::Char(c)
+                if !c.is_control() && !key.modifiers.contains(KeyModifiers::CONTROL) =>
+            {
+                self.server_url_buffer.push(c)
+            }
+            _ => {}
+        }
+    }
+
+    fn commit_server_url(&mut self) {
+        if self.server_connecting {
+            return;
+        }
+
+        let normalized = normalize_server_url(&self.server_url_buffer);
+        self.server_url_buffer = normalized.clone();
+        let _ = self.api_url_tx.send(normalized.clone());
+        self.push_log(format!("Connecting to {normalized}"));
+        self.server_connecting = true;
+
+        let api = self.api.clone();
+        let tx = self.state_tx.clone();
+        tokio::spawn(async move {
+            let _ = tx.send(poll_state(&api, true).await);
+        });
+    }
+
     fn handle_global_key(&mut self, key: KeyEvent) -> bool {
         // Any key closes help overlay
         if self.show_help {
@@ -268,6 +335,27 @@ impl App {
             }
             KeyCode::Char('l') => {
                 self.show_logs_strip = !self.show_logs_strip;
+                self.log_scroll = 0;
+                true
+            }
+            KeyCode::Up | KeyCode::Char('k') if self.show_logs_strip => {
+                self.scroll_logs(1);
+                true
+            }
+            KeyCode::Down | KeyCode::Char('j') if self.show_logs_strip => {
+                self.scroll_logs(-1);
+                true
+            }
+            KeyCode::PageUp if self.show_logs_strip => {
+                self.scroll_logs(LOG_PAGE as isize);
+                true
+            }
+            KeyCode::PageDown if self.show_logs_strip => {
+                self.scroll_logs(-(LOG_PAGE as isize));
+                true
+            }
+            KeyCode::End if self.show_logs_strip => {
+                self.log_scroll = 0;
                 true
             }
             KeyCode::Tab => {
@@ -386,9 +474,25 @@ impl App {
 
     pub fn push_log(&mut self, message: impl Into<String>) {
         self.logs.push(format_log(message));
-        if self.logs.len() > 100 {
+        if self.logs.len() > LOG_CAPACITY {
             self.logs.remove(0);
         }
+        // Scrolled-back readers keep their place instead of being dragged along.
+        if self.log_scroll > 0 {
+            self.scroll_logs(1);
+        }
+    }
+
+    pub fn scroll_logs(&mut self, delta: isize) {
+        self.log_scroll = self.log_scroll.saturating_add_signed(delta);
+        self.log_scroll = self.log_scroll_offset();
+    }
+
+    /// Newest-first offset into the log, clamped so the strip never scrolls
+    /// past a full page of the oldest entries (re-clamped when it resizes).
+    pub fn log_scroll_offset(&self) -> usize {
+        let max_scroll = self.logs.len().saturating_sub(self.log_view_height.get());
+        self.log_scroll.min(max_scroll)
     }
 
     fn log_state_update(&mut self, state: &DeviceState) {
@@ -423,17 +527,27 @@ impl App {
             ));
         }
         if previous.fan != state.fan {
+            let why =
+                transition_reason(&previous, state, state.fan.as_deref() == Some("ON"), |s| {
+                    s.fan_reason.as_deref()
+                });
             self.push_log(format!(
-                "Fan relay {} → {}",
+                "Fan relay {} → {}{why}{}",
                 previous.fan.as_deref().unwrap_or("?"),
-                state.fan.as_deref().unwrap_or("?")
+                state.fan.as_deref().unwrap_or("?"),
+                humidity_note(state.status.as_ref())
             ));
         }
         if previous.mist != state.mist {
+            let why =
+                transition_reason(&previous, state, state.mist.as_deref() == Some("ON"), |s| {
+                    s.mist_reason.as_deref()
+                });
             self.push_log(format!(
-                "Mist {} → {}",
+                "Mist {} → {}{why}{}",
                 previous.mist.as_deref().unwrap_or("?"),
-                state.mist.as_deref().unwrap_or("?")
+                state.mist.as_deref().unwrap_or("?"),
+                humidity_note(state.status.as_ref())
             ));
         }
     }
@@ -442,6 +556,7 @@ impl App {
         let api = self.api.clone();
         let tx = self.state_tx.clone();
         tokio::spawn(async move {
+            let url = api.base_url();
             let mutation = match action {
                 AppAction::ToggleFan => api.toggle_fan().await,
                 AppAction::ToggleMist => api.toggle_mist().await,
@@ -453,39 +568,214 @@ impl App {
                 }
             };
 
-            if let Err(err) = mutation {
-                let _ = tx.send(StateUpdate::Err {
-                    message: err.to_string(),
-                    latency_ms: 0,
-                });
-                return;
-            }
-
-            let started_at = Instant::now();
-            match request_fresh_state(&api).await {
-                Ok(state) => {
-                    let _ = tx.send(StateUpdate::Ok {
-                        state,
-                        latency_ms: started_at.elapsed().as_millis(),
-                    });
-                }
-                Err(err) => {
-                    let _ = tx.send(StateUpdate::Err {
+            let update = match mutation {
+                Err(err) => TaggedUpdate {
+                    url,
+                    update: StateUpdate::Err {
                         message: err.to_string(),
-                        latency_ms: started_at.elapsed().as_millis(),
-                    });
-                }
-            }
+                        latency_ms: 0,
+                    },
+                },
+                Ok(()) => poll_state(&api, true).await,
+            };
+            let _ = tx.send(update);
         });
     }
+}
+
+// When a relay stops, the reason it was *running* explains the event; the new
+// reason is just "off".
+fn transition_reason(
+    previous: &DeviceState,
+    next: &DeviceState,
+    turning_on: bool,
+    reason: fn(&FanStatus) -> Option<&str>,
+) -> String {
+    let source = if turning_on { next } else { previous };
+    let label = match source.status.as_ref().and_then(reason) {
+        Some("manual") => "manual",
+        Some("vent") => "vent cycle",
+        Some("humidity_automation") => "RH automation",
+        _ => return String::new(),
+    };
+    if turning_on {
+        format!("  ·  {label}")
+    } else {
+        format!("  ·  {label} ended")
+    }
+}
+
+fn humidity_note(status: Option<&FanStatus>) -> String {
+    status
+        .and_then(|s| s.smoothed_humidity_percent.or(s.humidity_percent))
+        .map(|rh| format!("  ·  RH {rh:.1}%"))
+        .unwrap_or_default()
 }
 
 fn format_log(message: impl Into<String>) -> String {
     format!("[{}] {}", Local::now().format("%H:%M:%S"), message.into())
 }
 
+async fn poll_state(api: &ApiClient, sync_first: bool) -> TaggedUpdate {
+    let url = api.base_url();
+    let started_at = Instant::now();
+    let result = if sync_first {
+        request_fresh_state(api).await
+    } else {
+        api.fetch_state().await
+    };
+    let latency_ms = started_at.elapsed().as_millis();
+    let update = match result {
+        Ok(state) => StateUpdate::Ok {
+            state: Box::new(state),
+            latency_ms,
+        },
+        Err(err) => StateUpdate::Err {
+            message: err.to_string(),
+            latency_ms,
+        },
+    };
+    TaggedUpdate { url, update }
+}
+
 async fn request_fresh_state(api: &ApiClient) -> Result<DeviceState> {
     api.request_sync().await?;
     tokio::time::sleep(Duration::from_millis(300)).await;
     api.fetch_state().await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api::DesiredFanState;
+
+    fn test_app() -> App {
+        let (api, tx) = ApiClient::new("http://localhost:8001");
+        App::new(api, tx)
+    }
+
+    fn sample_state(status: Option<FanStatus>) -> DeviceState {
+        DeviceState {
+            connected: Some("online".into()),
+            fan: Some("OFF".into()),
+            mist: Some("OFF".into()),
+            status,
+            desired: DesiredFanState {
+                manual_fan: None,
+                mist: None,
+                automation_enabled: None,
+                updated_at: None,
+            },
+            logs: Vec::new(),
+            last_seen_at: None,
+            last_transition_at: None,
+            next_transition_at: None,
+        }
+    }
+
+    fn press(app: &mut App, code: KeyCode, modifiers: KeyModifiers) {
+        app.handle_event(Event::Key(KeyEvent::new(code, modifiers)))
+            .expect("key event");
+    }
+
+    #[test]
+    fn scroll_clamps_to_viewport_and_stays_anchored_when_new_logs_arrive() {
+        let mut app = test_app();
+        app.log_view_height.set(3);
+        for i in 0..5 {
+            app.push_log(format!("entry {i}"));
+        }
+        assert_eq!(app.log_scroll, 0);
+
+        app.scroll_logs(2);
+        assert_eq!(app.log_scroll, 2);
+
+        let anchored = app.logs[app.logs.len() - 1 - app.log_scroll].clone();
+        app.push_log("entry 5");
+        assert_eq!(app.log_scroll, 3);
+        assert_eq!(app.logs[app.logs.len() - 1 - app.log_scroll], anchored);
+
+        app.scroll_logs(999);
+        assert_eq!(app.log_scroll, app.logs.len() - 3);
+        assert_eq!(app.log_scroll_offset(), app.log_scroll);
+
+        app.log_view_height.set(5);
+        assert_eq!(app.log_scroll_offset(), app.logs.len() - 5);
+
+        app.scroll_logs(-999);
+        assert_eq!(app.log_scroll, 0);
+    }
+
+    #[test]
+    fn server_url_field_takes_shortcut_keys_and_ctrl_c_quits() {
+        let mut app = test_app();
+        app.server_url_buffer.clear();
+        assert!(app.needs_server_setup());
+
+        for c in ['q', 'l', '?', 'j', 'k'] {
+            press(&mut app, KeyCode::Char(c), KeyModifiers::NONE);
+        }
+        press(&mut app, KeyCode::Tab, KeyModifiers::NONE);
+        press(&mut app, KeyCode::BackTab, KeyModifiers::SHIFT);
+
+        assert_eq!(app.server_url_buffer, "ql?jk");
+        assert!(!app.should_quit);
+        assert!(!app.show_logs_strip);
+        assert!(!app.show_help);
+        assert_eq!(app.focused_section, FocusedSection::default());
+
+        press(&mut app, KeyCode::Char('c'), KeyModifiers::CONTROL);
+        assert!(app.should_quit);
+        assert_eq!(app.server_url_buffer, "ql?jk");
+    }
+
+    #[test]
+    fn updates_from_a_previous_server_url_are_dropped() {
+        let mut app = test_app();
+        let _ = app.api_url_tx.send("http://new-server:8001".into());
+
+        let stale = TaggedUpdate {
+            url: "http://localhost:8001".into(),
+            update: StateUpdate::Err {
+                message: "old server down".into(),
+                latency_ms: 1,
+            },
+        };
+        app.state_tx.send(stale).expect("send stale");
+        app.drain_state_updates();
+        assert!(app.api_error.is_none());
+        assert!(app.device_state.is_none());
+
+        let current = TaggedUpdate {
+            url: app.api.base_url(),
+            update: StateUpdate::Ok {
+                state: Box::new(sample_state(None)),
+                latency_ms: 1,
+            },
+        };
+        app.state_tx.send(current).expect("send current");
+        app.drain_state_updates();
+        assert!(app.device_state.is_some());
+    }
+
+    #[test]
+    fn transition_logs_carry_reason_and_humidity() {
+        let mut app = test_app();
+        let status: FanStatus = serde_json::from_str(
+            r#"{"fan":true,"uptime_s":10,"rssi":-50,"fan_reason":"vent",
+                "smoothed_humidity_percent":87.4}"#,
+        )
+        .expect("status JSON");
+        let previous = sample_state(Some(status));
+        let mut next = previous.clone();
+        next.fan = Some("ON".into());
+
+        app.device_state = Some(previous);
+        app.log_state_update(&next);
+
+        let line = app.logs.last().expect("log line");
+        assert!(line.contains("Fan relay OFF → ON"), "{line}");
+        assert!(line.contains("vent cycle"), "{line}");
+        assert!(line.contains("RH 87.4%"), "{line}");
+    }
 }
