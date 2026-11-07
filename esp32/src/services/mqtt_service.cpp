@@ -1,4 +1,5 @@
 #include "services/mqtt_service.h"
+#include "app/broker_address.h"
 #include "app/config.h"
 #include "app/state.h"
 #include "domain/controller.h"
@@ -12,9 +13,18 @@
 #include <cstdarg>
 #include <esp_system.h>
 
+static WiFiClient netClient;
+static PubSubClient client(netClient);
+
+const char* mqttBrokerHost() {
+  return g.mqtt.host.length() > 0 ? g.mqtt.host.c_str() : MQTT_HOST;
+}
+
+uint16_t mqttBrokerPort() { return g.mqtt.port; }
+
 namespace {
-WiFiClient netClient;
-PubSubClient client(netClient);
+
+void applyMqttServer() { client.setServer(mqttBrokerHost(), mqttBrokerPort()); }
 
 bool parseBool(const String& value) {
   return value.equalsIgnoreCase("ON") ||
@@ -164,9 +174,7 @@ void onMessage(char* topic, byte* payload, unsigned int length) {
     persistAndPublish(false);
   }
 }
-}  // namespace
 
-namespace {
 const char* resetReasonName(esp_reset_reason_t r) {
   switch (r) {
     case ESP_RST_POWERON:  return "POWER_ON";
@@ -182,6 +190,7 @@ const char* resetReasonName(esp_reset_reason_t r) {
     default:               return "UNKNOWN";
   }
 }
+
 }  // namespace
 
 void mqttPublishLog(const char* fmt, ...) {
@@ -196,9 +205,71 @@ void mqttPublishLog(const char* fmt, ...) {
 }
 
 void mqttInit() {
-  client.setServer(MQTT_HOST, MQTT_PORT);
+  applyMqttServer();
   client.setCallback(onMessage);
   client.setBufferSize(MQTT_CLIENT_BUFFER_BYTES);
+}
+
+namespace {
+constexpr size_t SERIAL_LINE_MAX = MQTT_HOST_MAX + 16;
+
+void handleSerialLine(String line) {
+  line.trim();
+  if (line.length() == 0) return;
+
+  if (line.equalsIgnoreCase("mqtt")) {
+    Serial.printf("MQTT broker: %s:%u\n", mqttBrokerHost(), mqttBrokerPort());
+    return;
+  }
+
+  if (!line.startsWith("mqtt ")) return;
+
+  String arg = line.substring(5);
+  arg.trim();
+  if (arg.length() == 0 || arg.length() > MQTT_HOST_MAX) {
+    Serial.println("Usage: mqtt [host-or-ip[:port]]");
+    return;
+  }
+
+  String host = arg;
+  uint16_t port = MQTT_PORT;
+  const int colon = arg.lastIndexOf(':');
+  if (colon > 0) {
+    host = arg.substring(0, colon);
+    if (!parseBrokerPort(arg.substring(colon + 1).c_str(), port)) {
+      Serial.println("Invalid port: use digits only, 1-65535");
+      return;
+    }
+  }
+
+  prefsSetMqttBroker(host.c_str(), port);
+  if (client.connected()) client.disconnect();
+  applyMqttServer();
+  Serial.printf("MQTT broker saved: %s:%u\n", mqttBrokerHost(), mqttBrokerPort());
+}
+}  // namespace
+
+// Called every loop(): reads only what has already arrived, so a half-typed
+// line never stalls the control loop the way readStringUntil()'s timeout does.
+void mqttHandleSerialConfig() {
+  static String pending;
+  static bool overflowed = false;
+  while (Serial.available() > 0) {
+    const char received = static_cast<char>(Serial.read());
+    if (received == '\n') {
+      if (overflowed) {
+        Serial.println("Usage: mqtt [host-or-ip[:port]]");
+      } else {
+        handleSerialLine(pending);
+      }
+      pending = "";
+      overflowed = false;
+    } else if (pending.length() < SERIAL_LINE_MAX) {
+      pending += received;
+    } else {
+      overflowed = true;
+    }
+  }
 }
 
 bool mqttConnect() {

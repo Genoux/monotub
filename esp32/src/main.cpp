@@ -97,6 +97,7 @@ void setup() {
   controllerInit();
 
   Serial.printf("Boot reset: %s\n", resetReasonName(esp_reset_reason()));
+  Serial.printf("MQTT broker: %s:%u\n", mqttBrokerHost(), mqttBrokerPort());
   Serial.printf("Relay outputs held OFF for %ums (Wi-Fi init)\n",
                 RELAY_BOOT_DELAY_MS);
   g.runtime.relayBootSuppressUntil = millis() + RELAY_BOOT_DELAY_MS;
@@ -106,6 +107,7 @@ void setup() {
 }
 
 void loop() {
+  mqttHandleSerialConfig();
   mqttMaintain();
   bool environmentChanged = sht31Tick();
   ActuatorChanges actuatorChanges = controllerTick();

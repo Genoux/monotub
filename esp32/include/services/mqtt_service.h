@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 #include "domain/actuators.h"
 
 void mqttInit();
@@ -11,3 +13,6 @@ void mqttPublishMistState();
 void mqttPublishActuatorChanges(const ActuatorChanges& changes);
 void mqttPublishStatus();
 void mqttTickStatus();
+void mqttHandleSerialConfig();
+const char* mqttBrokerHost();
+uint16_t mqttBrokerPort();
