@@ -70,6 +70,7 @@ constexpr uint32_t ENV_INTERVAL_MS = 5000;
 // Controller must tick often enough for short vent windows.
 constexpr uint32_t CONTROLLER_INTERVAL_MS = 1000;
 constexpr uint32_t RELAY_BOOT_DELAY_MS = 5000;
+constexpr const char* OTA_HOSTNAME = "monotub";
 constexpr uint32_t MQTT_RETRY_MS = 5000;
 constexpr uint32_t WIFI_RETRY_MS = 10000;
 

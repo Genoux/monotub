@@ -171,3 +171,23 @@ Global:
 - `l` shows logs.
 - `?` shows help.
 - `q` quits.
+
+## Flashing the ESP32
+
+Copy `esp32/include/secrets.h.example` to `esp32/include/secrets.h` and fill in Wi-Fi, MQTT and
+`OTA_PASSWORD`.
+
+The first flash goes over USB:
+
+```sh
+cd esp32 && pio run -e esp32dev -t upload
+```
+
+After that, flash over Wi-Fi. The board answers as `monotub.local` (or use its IP):
+
+```sh
+cd esp32 && MONOTUB_OTA_HOST=monotub.local MONOTUB_OTA_PASSWORD=<OTA_PASSWORD> pio run -e esp32dev-ota -t upload
+```
+
+Both relays switch off when the update starts and stay off through the reboot and the boot delay;
+a failed update hands them back to the controller.
