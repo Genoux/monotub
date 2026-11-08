@@ -197,7 +197,7 @@ a failed update hands them back to the controller.
 The server serves the control panel at `https://monotub.tail2e56f0.ts.net` (tailnet only). On an
 iPhone, open it in Safari and use Share › Add to Home Screen.
 
-The desktop widget wraps the same page in a fixed 720×300 frameless window with a tray icon:
+The desktop widget wraps the same page in a fixed 560×220 frameless window with a tray icon. When the server is unreachable it shows a "connecting" screen and opens the panel as soon as it answers:
 
 ```sh
 cd desktop && cargo build --release
