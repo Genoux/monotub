@@ -13,7 +13,7 @@ Read `PRODUCT.md` first.
 - `server/` — Bun + Express. MQTT bridge and HTTP API, runs on the homeserver behind Tailscale.
 - `server/public/` — the web panel: one static HTML file, no build step, served by the same Express app.
 - `tui/` — Rust + ratatui terminal client of the same HTTP API.
-- `desktop/` — Tauri 2 shell: a frameless window on `https://monotub.tail2e56f0.ts.net` plus a tray icon (left click shows/hides, close hides). No frontend of its own.
+- `desktop/` — Tauri 2 shell: a fixed 720×300, non-resizable frameless window on `https://monotub.tail2e56f0.ts.net` plus a tray icon (left click shows/hides, close hides). No frontend of its own: the panel has a landscape mode (`min-width: 561px` and `max-height: 420px`) that fills that window edge to edge with overflow hidden; the size was picked from screenshots at 640×280 and 720×300 (2026-11-08), where 720×300 fits the readout, temperature and keys on one row.
 
 ## Layout
 
