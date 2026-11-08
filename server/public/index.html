@@ -3,159 +3,135 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#141416">
+<meta name="theme-color" content="#a9b49b">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Monotub">
 <title>Monotub</title>
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,400..800&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Doto:wght@900&display=swap">
 <style>
 :root {
-  --bg: #141416; --surface: #1c1d20; --line: #2a2b2f;
-  --text: #e4e1da; --muted: #8f8c85;
-  --amber: #ffb02e; --amber-dim: rgba(255, 176, 46, 0.24); --amber-ghost: rgba(255, 176, 46, 0.07);
-  --display: #0d0c0a;
+  --glass: #a9b49b; --glass-low: #97a389;
+  --ink: #1c2316; --ink-dim: rgba(28, 35, 22, 0.28); --ink-ghost: rgba(28, 35, 22, 0.11);
+  --ink-hover: rgba(28, 35, 22, 0.1); --ink-pressed-hover: #2e3826; --lit-shadow: rgba(28, 35, 22, 0.16);
 }
 * { box-sizing: border-box; }
+html { background: var(--glass-low); }
 html, body { margin: 0; }
 button { font: inherit; color: inherit; }
 body {
-  min-height: 100vh; display: grid; place-items: center; padding: 40px 16px;
-  background: var(--bg); color: var(--muted); font-family: "Archivo", sans-serif;
+  min-height: 100dvh; background: linear-gradient(180deg, var(--glass), var(--glass-low));
+  color: var(--ink); font-family: "Doto", monospace; font-weight: 900;
   -webkit-tap-highlight-color: transparent;
 }
 
 .app {
-  width: min(940px, 100%); background: var(--surface); border: 1px solid var(--line); border-radius: 16px;
-  padding: 28px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px 28px;
+  position: relative; max-width: 940px; margin: 0 auto; display: grid; gap: 20px;
+  padding: calc(20px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right))
+    calc(20px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
 }
-.bar { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.bar h1, .bar h2 { margin: 0; color: var(--text); font-size: 18px; font-weight: 800; font-stretch: 125%; letter-spacing: 0.02em; }
+.bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.bar h1, .bar h2 { margin: 0; font-size: 18px; font-weight: 900; letter-spacing: 0.12em; }
 .help-open, .help-close {
-  width: 28px; height: 28px; border-radius: 50%; cursor: pointer; display: grid; place-items: center;
-  background: var(--bg); border: 1px solid var(--line); color: var(--muted); font-weight: 800; font-size: 14px;
+  width: 20px; height: 20px; padding: 0 0 0 1.5px; border-radius: 50%; cursor: pointer; display: grid; place-items: center;
+  background: transparent; border: 1px solid var(--ink); font-size: 12px; line-height: 1;
 }
-.help-open:hover, .help-close:hover { color: var(--amber); border-color: var(--amber); }
-.help-open:focus-visible, .help-close:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.help-open:hover, .help-close:hover { background: var(--ink-hover); }
+.app > .bar { align-items: flex-start; }
+.help-open { width: 16px; height: 16px; padding: 0 0 0 1px; border: 0; font-size: 12px; }
+.help-open:focus-visible, .help-close:focus-visible, .key:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 
 .help {
   width: min(560px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow: auto; padding: 0;
-  background: var(--surface); color: var(--muted); border: 1px solid var(--line); border-radius: 12px;
-  font-size: 13px; line-height: 1.5;
+  background: var(--glass); color: var(--ink); border: 1px solid var(--ink); border-radius: 4px;
+  font-family: ui-monospace, "DejaVu Sans Mono", monospace; font-weight: 500; font-size: 13px; line-height: 1.5;
 }
 .help-sheet { padding: 16px 20px 18px; outline: none; }
-.help::backdrop { background: rgba(0, 0, 0, 0.6); }
-.help h3 { margin: 16px 0 6px; color: var(--text); font-size: 13px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.help::backdrop { background: rgba(0, 0, 0, 0.5); }
+.help h2, .help h3 { font-family: "Doto", monospace; font-weight: 900; }
+.help h3 { margin: 16px 0 6px; font-size: 15px; letter-spacing: 0.06em; text-transform: uppercase; }
 .help p, .help ul { margin: 0 0 6px; }
 .help ul { padding-left: 18px; }
-.help b, .help td.on { color: var(--text); }
-.help .now { color: var(--amber); }
+.help b { font-weight: 800; }
+.help .now, .help tr.current td { background: var(--ink); color: var(--glass); }
+.help .now { padding: 0 4px; }
 .help table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-.help th, .help td { text-align: left; padding: 5px 8px 5px 0; border-bottom: 1px solid var(--line); }
-.help th { color: var(--muted); font-weight: 600; font-size: 12px; }
-.help tr.current td { color: var(--amber); }
+.help th, .help td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--ink-dim); }
+.help th { font-weight: 700; font-size: 12px; }
 
-.display { background: var(--display); border-radius: 10px; padding: 18px 22px 14px; container-type: inline-size; }
-.ann-row { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.ann { display: flex; gap: 12px; align-items: center; }
-.ann span { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; font-stretch: 110%; color: var(--amber-dim); }
-.ann span.on { color: var(--amber); }
-.fan-icon { width: 13px; height: 13px; }
-.on .fan-icon { animation: spin 0.8s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
+.display { display: flex; flex-direction: column; container-type: inline-size; }
+.ann-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 12px; }
+.ann { display: flex; flex-wrap: wrap; gap: 0 10px; }
+.ann span { font-size: 14px; line-height: 24px; text-transform: uppercase; color: var(--ink-dim); }
+.ann span.on { color: var(--ink); }
+.ann span.on, .unit, .temp { text-shadow: 1px 1.5px 0 var(--lit-shadow); }
 
-.reading { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin: 14px 0 12px; }
-.reading svg.big { height: clamp(48px, 24cqi, 120px); width: auto; }
-.unit { color: var(--amber); font-size: 20px; font-weight: 700; font-stretch: 110%; padding-bottom: 6px; }
-.temp { margin-left: auto; display: flex; align-items: flex-end; gap: 6px; color: var(--amber); font-size: 15px; font-weight: 700; padding-bottom: 6px; }
-.temp svg { height: clamp(28px, 9cqi, 50px); width: auto; }
-.seg { fill: var(--amber-ghost); }
-.seg.on { fill: var(--amber); }
+.keys { display: flex; gap: 6px; margin-left: auto; }
+.key {
+  display: inline-grid; place-items: center; width: 58px; height: 24px; cursor: pointer;
+  /* Doto glyphs carry ~3px of right bearing at 14px; the text sat 1.5px left of centre without this. */
+  padding: 0 0 0 1.5px; border: 1px solid var(--ink); border-radius: 3px; background: transparent;
+  font-size: 14px; line-height: 1; transition: background 0.12s, transform 0.06s;
+}
+.key:not(:disabled):hover { background: var(--ink-hover); }
+.key:active { transform: scale(0.97); }
+.key[aria-pressed="true"] { background: var(--ink); color: var(--glass); }
+.key[aria-pressed="true"]:not(:disabled):hover { background: var(--ink-pressed-hover); }
+.key:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+/* Locked keys keep full contrast so FAN and MIST still show what AUTO is doing; the title says why they ignore clicks. */
+.key.locked { opacity: 1; }
+
+.reading { display: flex; align-items: flex-end; gap: 8px; margin: 20px 0 12px; }
+.reading svg.big { height: clamp(64px, 20cqi, 150px); width: auto; }
+.temp { margin-left: auto; display: flex; align-items: flex-end; gap: 4px; }
+.temp svg { height: clamp(30px, 8cqi, 60px); width: auto; }
+.unit, .temp { font-size: 18px; padding-bottom: 4px; }
+.seg { fill: var(--ink-ghost); }
+.seg.on { fill: var(--ink); filter: drop-shadow(1.5px 2px 0 var(--lit-shadow)); }
 
 .graph { position: relative; height: 56px; display: flex; align-items: flex-end; gap: 2px; }
-.graph i { flex: 1; height: 100%; position: relative; background: repeating-linear-gradient(to top, var(--amber-ghost) 0 4px, transparent 4px 6px); }
+.graph i { flex: 1; height: 100%; position: relative; background: repeating-linear-gradient(to top, var(--ink-ghost) 0 4px, transparent 4px 6px); }
 .graph i::after {
   content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: var(--level, 0%);
-  background: repeating-linear-gradient(to top, var(--amber) 0 4px, transparent 4px 6px);
+  background: repeating-linear-gradient(to top, var(--ink) 0 4px, transparent 4px 6px);
 }
-.graph .edge { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--amber); opacity: 0.35; }
-.graph-scale { display: flex; justify-content: space-between; margin-top: 6px; font-size: 11px; color: var(--amber); opacity: 0.8; }
+.graph .edge { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--ink); opacity: 0.35; }
+.graph-scale { display: flex; justify-content: space-between; margin-top: 6px; font-size: 12px; }
 
-.keys { display: grid; grid-template-columns: repeat(2, 104px); gap: 16px; align-content: center; }
-.key.master { grid-column: 1 / -1; width: 100%; }
-.key:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
-.key {
-  position: relative; width: 104px; height: 68px; cursor: pointer; border-radius: 10px;
-  background: var(--bg); border: 1px solid var(--line); color: var(--text);
-  font-weight: 800; font-stretch: 115%; font-size: 14px; letter-spacing: 0.04em;
-  transition: background 0.12s, border-color 0.12s, color 0.12s, transform 0.06s;
-}
-.key:not(:disabled):hover { border-color: #3a3b40; }
-.key:active { transform: scale(0.97); }
-.key[aria-pressed="true"] { background: rgba(255, 176, 46, 0.1); border-color: var(--amber); color: var(--amber); }
-.key:focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; }
-.key .dot { position: absolute; top: 9px; right: 10px; width: 7px; height: 7px; border-radius: 50%; background: var(--line); transition: background 0.12s; }
-.key[aria-pressed="true"] .dot { background: var(--amber); }
-
-.notice { grid-column: 1 / -1; margin: 0; color: var(--amber); font-size: 13px; font-weight: 600; }
+.notice { margin: 0; font-size: 13px; }
 .notice:empty { display: none; }
 
-.plate {
-  grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
-  padding-top: 16px; border-top: 1px solid var(--line); font-size: 12px;
-}
-.plate b { display: block; margin-top: 6px; color: var(--text); font-size: 14px; font-weight: 600; }
+.plate { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; padding-top: 14px; border-top: 1px solid var(--ink-dim); font-size: 13px; color: rgba(28, 35, 22, 0.6); }
+.plate b { display: block; margin-top: 6px; color: var(--ink); font-size: 15px; font-weight: 900; }
 .bars { display: inline-flex; align-items: flex-end; gap: 2px; height: 13px; margin-right: 6px; vertical-align: -1px; }
-.bars i { width: 3px; background: var(--muted); }
-.bars i.off { opacity: 0.3; }
+.bars i { width: 3px; background: var(--ink); }
+.bars i.off { opacity: 0.25; }
 
-@media (max-width: 760px) {
-  body {
-    place-items: stretch; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-    background: var(--surface);
-  }
-  .app { grid-template-columns: minmax(0, 1fr); align-content: start; gap: 18px; padding: 20px; border: none; border-radius: 0; }
-  .keys { grid-template-columns: repeat(3, 1fr); }
-  .key.master { grid-column: auto; }
-  .key { width: 100%; height: 60px; font-size: 12px; }
+@media (max-width: 560px) {
   .plate { grid-template-columns: repeat(2, 1fr); }
 }
-@media (max-width: 760px) and (max-height: 560px) {
-  .app { padding: 12px; gap: 12px; }
-  .plate { display: none; }
-  .display { padding: 12px 14px 10px; }
-  .reading { margin: 8px 0; }
-  .graph { height: 36px; }
-  .key { height: 48px; }
+/* Touch and narrow screens get full-width 44px switches; the widget is exactly 560px wide and keeps its own. */
+@media (pointer: coarse), (max-width: 560px) {
+  :root:not(.widget) .keys { width: 100%; gap: 8px; }
+  :root:not(.widget) .key { flex: 1; width: auto; height: 44px; font-size: 16px; }
 }
-@media (min-width: 561px) and (max-height: 420px) {
-  html, body { height: 100%; overflow: hidden; }
-  body { display: block; padding: 0; background: var(--surface); }
-  .app {
-    position: relative; width: 100%; height: 100%; gap: 10px 16px;
-    padding: calc(12px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right))
-      calc(14px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
-    grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto minmax(0, 1fr);
-    align-content: stretch; border: none; border-radius: 0;
-  }
-  .key.master { grid-column: 1 / -1; width: 100%; }
-  .display { padding: 12px 16px 10px; display: flex; flex-direction: column; min-height: 0; }
-  .reading { flex-wrap: nowrap; margin: auto 0 8px; }
-  .reading svg.big { height: clamp(40px, 19cqi, 96px); }
-  .temp svg { height: clamp(24px, 8cqi, 44px); }
-  .graph { height: 34px; }
-  .keys { grid-template-columns: repeat(2, 88px); gap: 10px; }
-  .key { width: 88px; height: 56px; font-size: 13px; }
-  .plate { display: none; }
-  .notice { position: absolute; left: 16px; right: 16px; bottom: 4px; font-size: 12px; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .on .fan-icon { animation: none; }
-}
+
+/* Desktop widget (/?widget): the same screen cut down to fill a 560x220 window (no plate or graph labels). */
+.widget, .widget body { height: 100%; overflow: hidden; }
+.widget body { min-height: 0; }
+.widget .app { height: 100%; max-width: none; display: flex; flex-direction: column; gap: 0; padding: 12px 16px 10px; }
+.widget .plate, .widget .graph-scale { display: none; }
+.widget .bar { margin-bottom: 8px; }
+.widget .display { flex: 1; min-height: 0; }
+.widget .reading { margin: auto 0 6px; }
+.widget .reading svg.big { height: 80px; }
+.widget .temp svg { height: 34px; }
+.widget .graph { height: 30px; }
+.widget .notice { position: absolute; left: 16px; right: 16px; bottom: 6px; padding: 2px 6px; background: var(--glass-low); font-size: 12px; }
 </style>
 </head>
 <body>
@@ -169,10 +145,10 @@ body {
   <section class="display" aria-live="polite">
     <div class="ann-row">
       <div class="ann" id="bands"></div>
-      <div class="ann">
-        <span id="ann-auto">auto</span>
-        <span id="ann-fan"><svg class="fan-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 6.6C8 3 8.9 1 10.6 1s2.7 2.2 0 4.9M9.4 8c3.6 0 5.6.9 5.6 2.6s-2.2 2.7-4.9 0M8 9.4c0 3.6-.9 5.6-2.6 5.6S2.7 12.8 5.4 10.1M6.6 8C3 8 1 7.1 1 5.4s2.2-2.7 4.9 0"/><circle cx="8" cy="8" r="1.5"/></svg>fan</span>
-        <span id="ann-mist">mist</span>
+      <div class="keys" role="group" aria-label="Controls">
+        <button class="key" data-key="auto" aria-pressed="false">AUTO</button>
+        <button class="key" data-key="fan" aria-pressed="false">FAN</button>
+        <button class="key" data-key="mist" aria-pressed="false">MIST</button>
       </div>
     </div>
     <div class="reading">
@@ -182,12 +158,6 @@ body {
     </div>
     <div class="graph" id="graph"></div>
     <div class="graph-scale"><span>2 min ago</span><span>now</span></div>
-  </section>
-
-  <section class="keys" aria-label="Controls">
-    <button class="key master" data-key="auto" aria-pressed="false"><span class="dot"></span>AUTO</button>
-    <button class="key" data-key="fan" aria-pressed="false"><span class="dot"></span>FAN</button>
-    <button class="key" data-key="mist" aria-pressed="false"><span class="dot"></span>MIST</button>
   </section>
 
   <p class="notice" id="notice" role="status"></p>
@@ -220,10 +190,21 @@ const KEY_REQUESTS = {
   mist: (pressed) => ["/mist", { enabled: !pressed }],
 };
 
+const KEY_EXPECTED_STATE = {
+  auto: (state, on) => ({ ...state, desired: { ...state.desired, automation_enabled: on } }),
+  fan: (state, on) => ({ ...state, fan: on ? "ON" : "OFF" }),
+  mist: (state, on) => ({ ...state, mist: on ? "ON" : "OFF" }),
+};
+
 let snapshot = null;
 let serverError = null;
+let keyError = null;
+// Bumped by every key press; a poll that started before one would undo its optimistic state.
+let keyGeneration = 0;
 let history = [];
 const byId = (id) => document.getElementById(id);
+// The desktop shell opens /?widget: the same screen without the plate and graph labels.
+document.documentElement.classList.toggle("widget", new URLSearchParams(location.search).has("widget"));
 
 const horizontal = (y, x1, x2) => `${x1},${y} ${x1 + 5},${y - 5} ${x2 - 5},${y - 5} ${x2},${y} ${x2 - 5},${y + 5} ${x1 + 5},${y + 5}`;
 const vertical = (x, y1, y2) => `${x},${y1} ${x + 5},${y1 + 5} ${x + 5},${y2 - 5} ${x},${y2} ${x - 5},${y2 - 5} ${x - 5},${y1 + 5}`;
@@ -307,6 +288,7 @@ function keyStates(state) {
 
 function noticeText() {
   if (serverError) return `Server unreachable: ${serverError}`;
+  if (keyError) return keyError;
   if (snapshot?.connected === "offline") return "Device offline — showing its last report";
   if (snapshot && !snapshot.status) return "Waiting for the device to report";
   return "";
@@ -334,13 +316,15 @@ function render() {
   drawDigits(byId("rh-digits"), isNumber(humidity) ? humidity.toFixed(1).padStart(4, "0") : "--.-");
   drawDigits(byId("temp-digits"), isNumber(temperature) ? temperature.toFixed(1) : "--.-");
   byId("bands").innerHTML = BAND_LABELS.map((label) => `<span class="${label === band ? "on" : ""}">${label}</span>`).join("");
-  Object.entries(keys).forEach(([name, pressed]) => byId(`ann-${name}`).classList.toggle("on", pressed));
   renderGraph(edges);
 
   document.querySelectorAll("[data-key]").forEach((key) => {
     const name = key.dataset.key;
     key.setAttribute("aria-pressed", keys[name]);
-    key.disabled = !controlsLive || (name !== "auto" && keys.auto);
+    const locked = controlsLive && name !== "auto" && keys.auto;
+    key.disabled = !controlsLive || locked;
+    key.classList.toggle("locked", locked);
+    key.title = locked ? "Controlled by AUTO" : "";
   });
 
   const barCount = signalBarCount(status?.rssi);
@@ -354,10 +338,13 @@ function render() {
 }
 
 async function fetchState() {
+  const generation = keyGeneration;
   try {
     const response = await fetch("/state", { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    snapshot = await response.json();
+    const fetched = await response.json();
+    if (generation !== keyGeneration) return;
+    snapshot = fetched;
     serverError = null;
     const humidity = snapshot.status?.humidity_percent;
     if (isNumber(humidity)) history = [...history, humidity].slice(-GRAPH_BARS);
@@ -368,7 +355,8 @@ async function fetchState() {
 }
 
 async function sendKey(name) {
-  const [path, body] = KEY_REQUESTS[name](keyStates(snapshot)[name]);
+  const pressed = keyStates(snapshot)[name];
+  const [path, body] = KEY_REQUESTS[name](pressed);
   try {
     const response = await fetch(path, {
       method: "POST",
@@ -379,10 +367,15 @@ async function sendKey(name) {
       const { error } = await response.json().catch(() => ({}));
       throw new Error(error ?? `HTTP ${response.status}`);
     }
+    // Re-fetching here would beat the device's MQTT echo and show the old state until the next poll.
+    keyGeneration += 1;
+    keyError = null;
+    snapshot = KEY_EXPECTED_STATE[name](snapshot, !pressed);
+    render();
   } catch (error) {
-    byId("notice").textContent = `${name.toUpperCase()} failed: ${error.message}`;
+    keyError = `${name.toUpperCase()} failed: ${error.message}`;
+    await fetchState();
   }
-  await fetchState();
 }
 
 // Firmware defaults (README › The Band Table), shown until the device reports its own values.
