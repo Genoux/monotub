@@ -8,9 +8,11 @@
         "label": "main",
         "url": "https://monotub.tail2e56f0.ts.net",
         "title": "Monotub",
-        "width": 340,
-        "height": 380,
-        "decorations": false
+        "width": 720,
+        "height": 300,
+        "resizable": false,
+        "decorations": false,
+        "backgroundColor": "#1c1d20"
       }
     ]
   },

@@ -197,11 +197,11 @@ a failed update hands them back to the controller.
 The server serves the control panel at `https://monotub.tail2e56f0.ts.net` (tailnet only). On an
 iPhone, open it in Safari and use Share › Add to Home Screen.
 
-The desktop widget wraps the same page in a small frameless window with a tray icon:
+The desktop widget wraps the same page in a fixed 720×300 frameless window with a tray icon:
 
 ```sh
 cd desktop && cargo build --release
 install -Dm755 target/release/monotub ~/.local/bin/monotub
 ```
 
-Left-click the tray icon to show or hide it; closing the window only hides it.
+Left-click the tray icon to show or hide it; closing the window only hides it. The `?` button in the panel explains the current automation rules, using the values the device reports.
