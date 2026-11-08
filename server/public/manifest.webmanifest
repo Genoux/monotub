@@ -3,7 +3,7 @@
   "short_name": "Monotub",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#141416",
-  "theme_color": "#141416",
+  "background_color": "#a9b49b",
+  "theme_color": "#a9b49b",
   "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
 }
