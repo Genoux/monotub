@@ -24,7 +24,7 @@ struct Cli {
     #[arg(
         long,
         env = "MONOTUB_API_URL",
-        default_value = "https://homeserver.tail2e56f0.ts.net:8001"
+        default_value = "https://monotub.tail2e56f0.ts.net"
     )]
     api_url: String,
 }
