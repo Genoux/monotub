@@ -13,7 +13,7 @@ Read `PRODUCT.md` first.
 - `server/` — Bun + Express. MQTT bridge and HTTP API, runs on the homeserver behind Tailscale.
 - `server/public/` — the web panel: one static HTML file, no build step, served by the same Express app.
 - `tui/` — Rust + ratatui terminal client of the same HTTP API.
-- `desktop/` — Tauri 2 shell: a fixed 720×300, non-resizable frameless window on `https://monotub.tail2e56f0.ts.net` plus a tray icon (left click shows/hides, close hides). No frontend of its own: the panel has a landscape mode (`min-width: 561px` and `max-height: 420px`) that fills that window edge to edge with overflow hidden; the size was picked from screenshots at 640×280 and 720×300 (2026-11-08), where 720×300 fits the readout, temperature and keys on one row.
+- `desktop/` — Tauri 2 shell: a fixed 560×220, non-resizable frameless window plus a tray icon (left click shows/hides, close hides). Its only bundled page is `desktop/ui/index.html`, a "connecting" screen that retries the panel every 3 s and then navigates to `https://monotub.tail2e56f0.ts.net/?widget`; loading the remote URL directly showed WebKit's error page whenever the widget started without the tailnet. The rest is the panel: The panel is one reflective-LCD design on every platform (band labels, readouts, graph, AUTO/FAN/MIST as switches on the glass); `?widget` only cuts it down to fit 560×220 (no plate or graph labels). A translucent window was tried on 2026-11-08 and dropped: over a wallpaper the panel and background could not be balanced (pane vs background 1.37:1, unlit labels 1.6:1). The tray needs the `ksni` feature of `tray-icon`: the default AppIndicator backend never emits left-click events.
 
 ## Layout
 
@@ -21,7 +21,7 @@ Read `PRODUCT.md` first.
 
 ## Decisions
 
-- The panel is a PWA served by the server, not a native app. The owner has an iPhone (no native iOS app), and the panel must stay on the tailnet (no public hosting). Same origin as the API means no CORS, and the Tailscale certificate gives the HTTPS iOS needs to install it. The desktop floating widget is a thin Tauri shell loading the same URL; window class `monotub`, floated and pinned by the `monotub-widget` rule in the dotfiles' Hyprland `windowrules.lua`. The window sets `url` explicitly: with only `build.frontendDist` set to the remote URL, Tauri 2 looked for a bundled `index.html` ("asset not found").
+- The panel is a PWA served by the server, not a native app. The owner has an iPhone (no native iOS app), and the panel must stay on the tailnet (no public hosting). Same origin as the API means no CORS, and the Tailscale certificate gives the HTTPS iOS needs to install it. The desktop floating widget is a thin Tauri shell loading the same URL; window class `monotub`, floated and centered by the `monotub-widget` rule in the dotfiles' Hyprland `windowrules.lua`. The window sets `url` explicitly: with only `build.frontendDist` set to the remote URL, Tauri 2 looked for a bundled `index.html` ("asset not found").
 - The humidity graph keeps its history in the page (last 2 min of polls); the server stores no history.
 - Automation is the linear band model: four RH edges (`rh_dry_below`, `rh_band_low`, `rh_band_high`, `rh_wet_above`) split five bands, and the firmware maps each band to one action. The panel lights the band from `current_band` (the band engaged after the hold time, so it matches the relays) and computes it from the edges only when the firmware does not report one.
 

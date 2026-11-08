@@ -2,17 +2,21 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "monotub",
   "identifier": "monotub",
+  "build": {
+    "frontendDist": "ui"
+  },
   "app": {
     "windows": [
       {
         "label": "main",
-        "url": "https://monotub.tail2e56f0.ts.net",
+        "url": "index.html",
         "title": "Monotub",
-        "width": 720,
-        "height": 300,
+        "width": 560,
+        "height": 220,
         "resizable": false,
         "decorations": false,
-        "backgroundColor": "#1c1d20"
+        "center": true,
+        "backgroundColor": "#a9b49b"
       }
     ]
   },
