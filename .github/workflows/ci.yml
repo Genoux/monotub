@@ -1,0 +1,26 @@
+# Created by jb-toolkit; owned by the project. Keep the contract: CI runs
+# scripts/check and nothing else decides whether the project is healthy (R5).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tui
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Check
+        run: scripts/check

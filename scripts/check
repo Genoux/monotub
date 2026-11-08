@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# The one health check (R5). CI runs exactly this.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+echo "==> tui: fmt, clippy, tests"
+(cd tui && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test)
+
+echo "==> esp32: host-side unit tests"
+(cd esp32 && test_binary="$(mktemp)" && g++ -std=c++17 -Wall -Wextra -Werror -Iinclude test/broker_address_test.cpp -o "$test_binary" && "$test_binary" && rm "$test_binary")
+
+echo "==> server: install, types"
+(cd server && bun install --frozen-lockfile && bun x tsc --noEmit)
