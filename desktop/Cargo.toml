@@ -12,3 +12,8 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = ["tray-icon"] }
+
+# Not used directly: enabling `ksni` swaps Tauri's Linux tray backend. The default AppIndicator
+# backend never emits left-click events (tray-icon 0.25 docs), so the click could not toggle the window.
+[target.'cfg(target_os = "linux")'.dependencies]
+tray-icon = { version = "0.25", features = ["ksni"] }
