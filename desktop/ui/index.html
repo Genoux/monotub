@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Monotub</title>
+<style>
+html, body { height: 100%; margin: 0; overflow: hidden; }
+body {
+  display: grid; place-content: center; gap: 10px; text-align: center;
+  background: linear-gradient(180deg, #a9b49b, #97a389); color: #1c2316;
+  font-family: ui-monospace, "DejaVu Sans Mono", monospace; font-weight: 700;
+}
+h1 { margin: 0; font-size: 22px; letter-spacing: 0.12em; text-shadow: 1px 1.5px 0 rgba(28, 35, 22, 0.16); }
+p { margin: 0; font-size: 12px; color: rgba(28, 35, 22, 0.6); }
+</style>
+</head>
+<body>
+<h1>CONNECTING</h1>
+<p id="detail"></p>
+<script>
+// Bundled so a widget opened without the tailnet shows this instead of WebKit's error page.
+const PANEL = new URLSearchParams(location.search).get("panel") ?? "https://monotub.tail2e56f0.ts.net";
+const RETRY_MS = 3000;
+
+async function connect() {
+  try {
+    // no-cors: the panel sends no CORS headers; any answer at all means it is reachable.
+    // The timeout keeps a black-holed tailnet from hanging the retry loop.
+    await fetch(`${PANEL}/state`, { mode: "no-cors", cache: "no-store", signal: AbortSignal.timeout(5000) });
+    location.replace(`${PANEL}/?widget`);
+  } catch {
+    document.getElementById("detail").textContent = `No answer from ${new URL(PANEL).host}, retrying`;
+    setTimeout(connect, RETRY_MS);
+  }
+}
+connect();
+</script>
+</body>
+</html>
