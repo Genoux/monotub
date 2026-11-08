@@ -5,6 +5,7 @@
 #include "drivers/sht31.h"
 #include "drivers/wifi_connect.h"
 #include "services/mqtt_service.h"
+#include "services/ota.h"
 #include "services/prefs_store.h"
 #include <esp_system.h>
 
@@ -107,6 +108,7 @@ void setup() {
 }
 
 void loop() {
+  otaHandle();
   mqttHandleSerialConfig();
   mqttMaintain();
   bool environmentChanged = sht31Tick();

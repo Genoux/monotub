@@ -25,6 +25,7 @@ Read `PRODUCT.md` first.
 - Automation is the linear band model: four RH edges (`rh_dry_below`, `rh_band_low`, `rh_band_high`, `rh_wet_above`) split five bands, and the firmware maps each band to one action. The panel lights the band from `current_band` (the band engaged after the hold time, so it matches the relays) and computes it from the edges only when the firmware does not report one.
 
 <!-- - YYYY-MM-DD: decision. Measured: number, how. Guards against: mistake. -->
+- Firmware updates go over Wi-Fi (ArduinoOTA, hostname `monotub`, password `OTA_PASSWORD` in `secrets.h`), after one USB flash; see README › Flashing the ESP32. The esp32dev default partition table already has two OTA slots (`app0`/`app1`, 0x140000 bytes each), so no custom table. Measured 2026-11-08 with `pio run -e esp32dev`: 840,621 bytes, 64.1% of a slot. Guards against: `ArduinoOTA.handle()` blocks for the whole transfer, so the control loop cannot switch relays mid-update; `onStart` turns both off (mist would otherwise keep running unattended) and `onError` hands them back via `controllerForceApplyOutputs()`.
 
 ## Project rules
 
