@@ -191,3 +191,17 @@ cd esp32 && MONOTUB_OTA_HOST=monotub.local MONOTUB_OTA_PASSWORD=<OTA_PASSWORD> p
 
 Both relays switch off when the update starts and stay off through the reboot and the boot delay;
 a failed update hands them back to the controller.
+
+## Panel and desktop widget
+
+The server serves the control panel at `https://monotub.tail2e56f0.ts.net` (tailnet only). On an
+iPhone, open it in Safari and use Share › Add to Home Screen.
+
+The desktop widget wraps the same page in a small frameless window with a tray icon:
+
+```sh
+cd desktop && cargo build --release
+install -Dm755 target/release/monotub ~/.local/bin/monotub
+```
+
+Left-click the tray icon to show or hide it; closing the window only hides it.

@@ -45,3 +45,5 @@ dist/
 .atl/
 # <<< jb-toolkit
 .impeccable/
+desktop/target/
+desktop/gen/
