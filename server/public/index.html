@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#141416">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Monotub">
+<title>Monotub</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,400..800&display=swap">
+<style>
+:root {
+  --bg: #141416; --surface: #1c1d20; --line: #2a2b2f;
+  --text: #e4e1da; --muted: #8f8c85;
+  --amber: #ffb02e; --amber-dim: rgba(255, 176, 46, 0.24); --amber-ghost: rgba(255, 176, 46, 0.07);
+  --display: #0d0c0a;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+button { font: inherit; color: inherit; }
+body {
+  min-height: 100vh; display: grid; place-items: center; padding: 40px 16px;
+  background: var(--bg); color: var(--muted); font-family: "Archivo", sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.app {
+  width: min(940px, 100%); background: var(--surface); border: 1px solid var(--line); border-radius: 16px;
+  padding: 28px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px 28px;
+}
+.app h1 { grid-column: 1 / -1; margin: 0; color: var(--text); font-size: 18px; font-weight: 800; font-stretch: 125%; letter-spacing: 0.02em; }
+
+.display { background: var(--display); border-radius: 10px; padding: 18px 22px 14px; container-type: inline-size; }
+.ann-row { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.ann { display: flex; gap: 12px; align-items: center; }
+.ann span { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; font-stretch: 110%; color: var(--amber-dim); }
+.ann span.on { color: var(--amber); }
+.fan-icon { width: 13px; height: 13px; }
+.on .fan-icon { animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.reading { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin: 14px 0 12px; }
+.reading svg.big { height: clamp(48px, 24cqi, 120px); width: auto; }
+.unit { color: var(--amber); font-size: 20px; font-weight: 700; font-stretch: 110%; padding-bottom: 6px; }
+.temp { margin-left: auto; display: flex; align-items: flex-end; gap: 6px; color: var(--amber); font-size: 15px; font-weight: 700; padding-bottom: 6px; }
+.temp svg { height: clamp(28px, 9cqi, 50px); width: auto; }
+.seg { fill: var(--amber-ghost); }
+.seg.on { fill: var(--amber); }
+
+.graph { position: relative; height: 56px; display: flex; align-items: flex-end; gap: 2px; }
+.graph i { flex: 1; height: 100%; position: relative; background: repeating-linear-gradient(to top, var(--amber-ghost) 0 4px, transparent 4px 6px); }
+.graph i::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: var(--level, 0%);
+  background: repeating-linear-gradient(to top, var(--amber) 0 4px, transparent 4px 6px);
+}
+.graph .edge { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--amber); opacity: 0.35; }
+.graph-scale { display: flex; justify-content: space-between; margin-top: 6px; font-size: 11px; color: var(--amber); opacity: 0.8; }
+
+.keys { display: grid; grid-template-columns: repeat(2, 104px); gap: 16px; align-content: center; }
+.key.master { grid-column: 1 / -1; width: 100%; }
+.key:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+.key {
+  position: relative; width: 104px; height: 68px; cursor: pointer; border-radius: 10px;
+  background: var(--bg); border: 1px solid var(--line); color: var(--text);
+  font-weight: 800; font-stretch: 115%; font-size: 14px; letter-spacing: 0.04em;
+  transition: background 0.12s, border-color 0.12s, color 0.12s, transform 0.06s;
+}
+.key:not(:disabled):hover { border-color: #3a3b40; }
+.key:active { transform: scale(0.97); }
+.key[aria-pressed="true"] { background: rgba(255, 176, 46, 0.1); border-color: var(--amber); color: var(--amber); }
+.key:focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; }
+.key .dot { position: absolute; top: 9px; right: 10px; width: 7px; height: 7px; border-radius: 50%; background: var(--line); transition: background 0.12s; }
+.key[aria-pressed="true"] .dot { background: var(--amber); }
+
+.notice { grid-column: 1 / -1; margin: 0; color: var(--amber); font-size: 13px; font-weight: 600; }
+.notice:empty { display: none; }
+
+.plate {
+  grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+  padding-top: 16px; border-top: 1px solid var(--line); font-size: 12px;
+}
+.plate b { display: block; margin-top: 6px; color: var(--text); font-size: 14px; font-weight: 600; }
+.bars { display: inline-flex; align-items: flex-end; gap: 2px; height: 13px; margin-right: 6px; vertical-align: -1px; }
+.bars i { width: 3px; background: var(--muted); }
+.bars i.off { opacity: 0.3; }
+
+@media (max-width: 760px) {
+  body {
+    place-items: stretch; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    background: var(--surface);
+  }
+  .app { grid-template-columns: minmax(0, 1fr); align-content: start; gap: 18px; padding: 20px; border: none; border-radius: 0; }
+  .keys { grid-template-columns: repeat(3, 1fr); }
+  .key.master { grid-column: auto; }
+  .key { width: 100%; height: 60px; font-size: 12px; }
+  .plate { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 760px) and (max-height: 560px) {
+  .app { padding: 12px; gap: 12px; }
+  .app h1, .plate { display: none; }
+  .display { padding: 12px 14px 10px; }
+  .reading { margin: 8px 0; }
+  .graph { height: 36px; }
+  .key { height: 48px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .on .fan-icon { animation: none; }
+}
+</style>
+</head>
+<body>
+
+<main class="app" aria-label="Monotub control panel">
+  <h1>MONOTUB</h1>
+
+  <section class="display" aria-live="polite">
+    <div class="ann-row">
+      <div class="ann" id="bands"></div>
+      <div class="ann">
+        <span id="ann-auto">auto</span>
+        <span id="ann-fan"><svg class="fan-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 6.6C8 3 8.9 1 10.6 1s2.7 2.2 0 4.9M9.4 8c3.6 0 5.6.9 5.6 2.6s-2.2 2.7-4.9 0M8 9.4c0 3.6-.9 5.6-2.6 5.6S2.7 12.8 5.4 10.1M6.6 8C3 8 1 7.1 1 5.4s2.2-2.7 4.9 0"/><circle cx="8" cy="8" r="1.5"/></svg>fan</span>
+        <span id="ann-mist">mist</span>
+      </div>
+    </div>
+    <div class="reading">
+      <svg class="big" id="rh-digits" role="img"></svg>
+      <span class="unit">%RH</span>
+      <div class="temp"><svg id="temp-digits" role="img"></svg><span>°C</span></div>
+    </div>
+    <div class="graph" id="graph"></div>
+    <div class="graph-scale"><span>2 min ago</span><span>now</span></div>
+  </section>
+
+  <section class="keys" aria-label="Controls">
+    <button class="key master" data-key="auto" aria-pressed="false"><span class="dot"></span>AUTO</button>
+    <button class="key" data-key="fan" aria-pressed="false"><span class="dot"></span>FAN</button>
+    <button class="key" data-key="mist" aria-pressed="false"><span class="dot"></span>MIST</button>
+  </section>
+
+  <p class="notice" id="notice" role="status"></p>
+
+  <footer class="plate">
+    <div>Signal<b><span class="bars" id="signal-bars"><i style="height:30%"></i><i style="height:55%"></i><i style="height:80%"></i><i style="height:100%"></i></span><span id="rssi">—</span></b></div>
+    <div>Address<b id="address">—</b></div>
+    <div>Running for<b id="uptime">—</b></div>
+    <div>Last report<b id="last-report">—</b></div>
+  </footer>
+</main>
+
+<script>
+const POLL_MS = 2000;
+const GRAPH_BARS = 60;
+const BAND_LABELS = ["dry", "recovering", "healthy", "drying", "wet"];
+const KEY_REQUESTS = {
+  auto: (pressed) => ["/automation-settings", { automation_enabled: !pressed }],
+  fan: (pressed) => ["/fan", { enabled: !pressed }],
+  mist: (pressed) => ["/mist", { enabled: !pressed }],
+};
+
+let snapshot = null;
+let serverError = null;
+let history = [];
+const byId = (id) => document.getElementById(id);
+
+const horizontal = (y, x1, x2) => `${x1},${y} ${x1 + 5},${y - 5} ${x2 - 5},${y - 5} ${x2},${y} ${x2 - 5},${y + 5} ${x1 + 5},${y + 5}`;
+const vertical = (x, y1, y2) => `${x},${y1} ${x + 5},${y1 + 5} ${x + 5},${y2 - 5} ${x},${y2} ${x - 5},${y2 - 5} ${x - 5},${y1 + 5}`;
+const SEGMENT_SHAPES = {
+  a: horizontal(8, 12, 48), g: horizontal(50, 12, 48), d: horizontal(92, 12, 48),
+  f: vertical(10, 10, 48), b: vertical(50, 10, 48), e: vertical(10, 52, 90), c: vertical(50, 52, 90),
+};
+const DIGIT_SEGMENTS = {
+  "0": "abcdef", "1": "bc", "2": "abdeg", "3": "abcdg", "4": "bcfg",
+  "5": "acdfg", "6": "acdefg", "7": "abc", "8": "abcdefg", "9": "abcdfg", "-": "g",
+};
+const DIGIT_WIDTH = 68;
+
+function drawDigits(svg, text) {
+  const glyphs = [...text].reduce((list, char) => {
+    if (char === "." && list.length) list[list.length - 1].point = true;
+    else list.push({ char, point: false });
+    return list;
+  }, []);
+  svg.innerHTML = glyphs.map((glyph, index) => {
+    const lit = DIGIT_SEGMENTS[glyph.char] ?? "";
+    const segments = Object.entries(SEGMENT_SHAPES)
+      .map(([name, points]) => `<polygon class="seg${lit.includes(name) ? " on" : ""}" points="${points}"/>`).join("");
+    return `<g transform="translate(${index * DIGIT_WIDTH + 10} 0) skewX(-7)">${segments}<circle class="seg${glyph.point ? " on" : ""}" cx="60" cy="92" r="5"/></g>`;
+  }).join("");
+  svg.setAttribute("viewBox", `0 0 ${glyphs.length * DIGIT_WIDTH + 12} 100`);
+  svg.setAttribute("aria-label", text);
+}
+
+const isNumber = (value) => typeof value === "number" && Number.isFinite(value);
+
+const FIRMWARE_BAND_LABELS = {
+  too_dry: "dry", recovering: "recovering", healthy: "healthy", drying: "drying", too_wet: "wet",
+};
+
+function bandEdges(status) {
+  const edges = [status?.rh_dry_below, status?.rh_band_low, status?.rh_band_high, status?.rh_wet_above];
+  return edges.every(isNumber) ? edges : null;
+}
+
+// current_band is the band the firmware has engaged (after its hold time), so it
+// matches what the relays are doing; the raw reading can sit in a neighbour band.
+function bandFor(status, edges) {
+  const engaged = FIRMWARE_BAND_LABELS[status?.current_band];
+  if (engaged) return engaged;
+  const humidity = status?.humidity_percent;
+  if (!isNumber(humidity) || !edges) return null;
+  const index = edges.findIndex((edge) => humidity < edge);
+  return BAND_LABELS[index === -1 ? edges.length : index];
+}
+
+function formatUptime(seconds) {
+  if (!isNumber(seconds)) return "—";
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (days) return `${days} d ${hours} h`;
+  if (hours) return `${hours} h ${minutes} m`;
+  return `${minutes} m`;
+}
+
+function formatAgo(iso) {
+  if (!iso) return "never";
+  const seconds = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000));
+  if (seconds < 3) return "just now";
+  if (seconds < 120) return `${seconds} s ago`;
+  if (seconds < 7200) return `${Math.round(seconds / 60)} min ago`;
+  return `${Math.round(seconds / 3600)} h ago`;
+}
+
+const signalBarCount = (rssi) => !isNumber(rssi) ? 0 : rssi > -55 ? 4 : rssi > -65 ? 3 : rssi > -75 ? 2 : 1;
+
+function keyStates(state) {
+  const status = state?.status;
+  return {
+    auto: state?.desired?.automation_enabled ?? status?.automation_enabled ?? false,
+    fan: state?.fan === "ON",
+    mist: state?.mist === "ON",
+  };
+}
+
+function noticeText() {
+  if (serverError) return `Server unreachable: ${serverError}`;
+  if (snapshot?.connected === "offline") return "Device offline — showing its last report";
+  if (snapshot && !snapshot.status) return "Waiting for the device to report";
+  return "";
+}
+
+function renderGraph(edges) {
+  const graphMin = Math.floor(Math.min(edges ? edges[0] - 1 : 80, ...history));
+  const graphMax = Math.ceil(Math.max(edges ? edges[3] + 1 : 95, ...history));
+  const levelFor = (value) => Math.min(Math.max((value - graphMin) / (graphMax - graphMin), 0.04), 1) * 100;
+  const padded = [...Array(Math.max(GRAPH_BARS - history.length, 0)).fill(null), ...history];
+  byId("graph").innerHTML =
+    padded.map((value) => `<i style="--level:${value === null ? 0 : levelFor(value)}%"></i>`).join("") +
+    (edges ? [edges[1], edges[2]].map((edge) => `<span class="edge" style="bottom:${levelFor(edge)}%"></span>`).join("") : "");
+}
+
+function render() {
+  const status = snapshot?.status;
+  const humidity = status?.humidity_percent;
+  const temperature = status?.temperature_c;
+  const edges = bandEdges(status);
+  const band = bandFor(status, edges);
+  const keys = keyStates(snapshot);
+  const controlsLive = Boolean(status) && !serverError && snapshot.connected !== "offline";
+
+  drawDigits(byId("rh-digits"), isNumber(humidity) ? humidity.toFixed(1).padStart(4, "0") : "--.-");
+  drawDigits(byId("temp-digits"), isNumber(temperature) ? temperature.toFixed(1) : "--.-");
+  byId("bands").innerHTML = BAND_LABELS.map((label) => `<span class="${label === band ? "on" : ""}">${label}</span>`).join("");
+  Object.entries(keys).forEach(([name, pressed]) => byId(`ann-${name}`).classList.toggle("on", pressed));
+  renderGraph(edges);
+
+  document.querySelectorAll("[data-key]").forEach((key) => {
+    const name = key.dataset.key;
+    key.setAttribute("aria-pressed", keys[name]);
+    key.disabled = !controlsLive || (name !== "auto" && keys.auto);
+  });
+
+  const barCount = signalBarCount(status?.rssi);
+  [...byId("signal-bars").children].forEach((bar, index) => bar.classList.toggle("off", index >= barCount));
+  byId("rssi").textContent = isNumber(status?.rssi) ? `${status.rssi} dBm` : "—";
+  byId("address").textContent = status?.ip ?? "—";
+  byId("uptime").textContent = formatUptime(status?.uptime_s);
+  byId("last-report").textContent = formatAgo(snapshot?.lastSeenAt);
+  byId("notice").textContent = noticeText();
+}
+
+async function fetchState() {
+  try {
+    const response = await fetch("/state", { cache: "no-store" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    snapshot = await response.json();
+    serverError = null;
+    const humidity = snapshot.status?.humidity_percent;
+    if (isNumber(humidity)) history = [...history, humidity].slice(-GRAPH_BARS);
+  } catch (error) {
+    serverError = error.message;
+  }
+  render();
+}
+
+async function sendKey(name) {
+  const [path, body] = KEY_REQUESTS[name](keyStates(snapshot)[name]);
+  try {
+    const response = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const { error } = await response.json().catch(() => ({}));
+      throw new Error(error ?? `HTTP ${response.status}`);
+    }
+  } catch (error) {
+    byId("notice").textContent = `${name.toUpperCase()} failed: ${error.message}`;
+  }
+  await fetchState();
+}
+
+document.querySelectorAll("[data-key]").forEach((key) =>
+  key.addEventListener("click", () => sendKey(key.dataset.key)));
+
+fetchState();
+setInterval(fetchState, POLL_MS);
+</script>
+</body>
+</html>
