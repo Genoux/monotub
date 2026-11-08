@@ -33,7 +33,31 @@ body {
   width: min(940px, 100%); background: var(--surface); border: 1px solid var(--line); border-radius: 16px;
   padding: 28px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px 28px;
 }
-.app h1 { grid-column: 1 / -1; margin: 0; color: var(--text); font-size: 18px; font-weight: 800; font-stretch: 125%; letter-spacing: 0.02em; }
+.bar { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.bar h1, .bar h2 { margin: 0; color: var(--text); font-size: 18px; font-weight: 800; font-stretch: 125%; letter-spacing: 0.02em; }
+.help-open, .help-close {
+  width: 28px; height: 28px; border-radius: 50%; cursor: pointer; display: grid; place-items: center;
+  background: var(--bg); border: 1px solid var(--line); color: var(--muted); font-weight: 800; font-size: 14px;
+}
+.help-open:hover, .help-close:hover { color: var(--amber); border-color: var(--amber); }
+.help-open:focus-visible, .help-close:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+
+.help {
+  width: min(560px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow: auto; padding: 0;
+  background: var(--surface); color: var(--muted); border: 1px solid var(--line); border-radius: 12px;
+  font-size: 13px; line-height: 1.5;
+}
+.help-sheet { padding: 16px 20px 18px; outline: none; }
+.help::backdrop { background: rgba(0, 0, 0, 0.6); }
+.help h3 { margin: 16px 0 6px; color: var(--text); font-size: 13px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.help p, .help ul { margin: 0 0 6px; }
+.help ul { padding-left: 18px; }
+.help b, .help td.on { color: var(--text); }
+.help .now { color: var(--amber); }
+.help table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.help th, .help td { text-align: left; padding: 5px 8px 5px 0; border-bottom: 1px solid var(--line); }
+.help th { color: var(--muted); font-weight: 600; font-size: 12px; }
+.help tr.current td { color: var(--amber); }
 
 .display { background: var(--display); border-radius: 10px; padding: 18px 22px 14px; container-type: inline-size; }
 .ann-row { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
@@ -102,11 +126,32 @@ body {
 }
 @media (max-width: 760px) and (max-height: 560px) {
   .app { padding: 12px; gap: 12px; }
-  .app h1, .plate { display: none; }
+  .plate { display: none; }
   .display { padding: 12px 14px 10px; }
   .reading { margin: 8px 0; }
   .graph { height: 36px; }
   .key { height: 48px; }
+}
+@media (min-width: 561px) and (max-height: 420px) {
+  html, body { height: 100%; overflow: hidden; }
+  body { display: block; padding: 0; background: var(--surface); }
+  .app {
+    position: relative; width: 100%; height: 100%; gap: 10px 16px;
+    padding: calc(12px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right))
+      calc(14px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
+    grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto minmax(0, 1fr);
+    align-content: stretch; border: none; border-radius: 0;
+  }
+  .key.master { grid-column: 1 / -1; width: 100%; }
+  .display { padding: 12px 16px 10px; display: flex; flex-direction: column; min-height: 0; }
+  .reading { flex-wrap: nowrap; margin: auto 0 8px; }
+  .reading svg.big { height: clamp(40px, 19cqi, 96px); }
+  .temp svg { height: clamp(24px, 8cqi, 44px); }
+  .graph { height: 34px; }
+  .keys { grid-template-columns: repeat(2, 88px); gap: 10px; }
+  .key { width: 88px; height: 56px; font-size: 13px; }
+  .plate { display: none; }
+  .notice { position: absolute; left: 16px; right: 16px; bottom: 4px; font-size: 12px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .on .fan-icon { animation: none; }
@@ -116,7 +161,10 @@ body {
 <body>
 
 <main class="app" aria-label="Monotub control panel">
-  <h1>MONOTUB</h1>
+  <header class="bar">
+    <h1>MONOTUB</h1>
+    <button class="help-open" id="help-open" aria-label="How the automation works" aria-haspopup="dialog">?</button>
+  </header>
 
   <section class="display" aria-live="polite">
     <div class="ann-row">
@@ -151,6 +199,16 @@ body {
     <div>Last report<b id="last-report">—</b></div>
   </footer>
 </main>
+
+<dialog class="help" id="help" aria-labelledby="help-title">
+  <div class="help-sheet" tabindex="-1" autofocus>
+    <header class="bar">
+      <h2 id="help-title">How it works</h2>
+      <button class="help-close" id="help-close" aria-label="Close">×</button>
+    </header>
+    <div id="help-body"></div>
+  </div>
+</dialog>
 
 <script>
 const POLL_MS = 2000;
@@ -292,6 +350,7 @@ function render() {
   byId("uptime").textContent = formatUptime(status?.uptime_s);
   byId("last-report").textContent = formatAgo(snapshot?.lastSeenAt);
   byId("notice").textContent = noticeText();
+  if (byId("help").open) renderHelp();
 }
 
 async function fetchState() {
@@ -325,6 +384,84 @@ async function sendKey(name) {
   }
   await fetchState();
 }
+
+// Firmware defaults (README › The Band Table), shown until the device reports its own values.
+const DEFAULT_RULES = {
+  rh_dry_below: 85, rh_band_low: 86, rh_band_high: 88, rh_wet_above: 92,
+  band_hold_seconds: 10, vent_on_seconds: 5, vent_off_seconds: 90,
+};
+
+function rulesFrom(status) {
+  const entries = Object.entries(DEFAULT_RULES).map(([field, fallback]) =>
+    [field, isNumber(status?.[field]) ? status[field] : fallback]);
+  const reported = Object.keys(DEFAULT_RULES).every((field) => isNumber(status?.[field]));
+  return { ...Object.fromEntries(entries), reported };
+}
+
+const percent = (value) => isNumber(value) ? `${Number(value.toFixed(1))}%` : "—";
+
+function helpNow(status) {
+  if (!status) return "<p>No report from the device yet.</p>";
+  const keys = keyStates(snapshot);
+  const humidity = isNumber(status.smoothed_humidity_percent) ? status.smoothed_humidity_percent : status.humidity_percent;
+  const band = bandFor(status, bandEdges(status));
+  const settling = isNumber(status.band_hold_remaining_s) && status.band_hold_remaining_s > 0
+    ? ` A band change is settling: ${status.band_hold_remaining_s} s left.` : "";
+  const mode = keys.auto
+    ? `Automation is <b>on</b>. ${band ? `Smoothed RH ${percent(humidity)}, engaged band <b class="now">${band}</b>.` : `Smoothed RH ${percent(humidity)}; the band shows once the firmware reports it.`}${settling}`
+    : "Automation is <b>off</b>: FAN and MIST are manual and humidity changes nothing.";
+  const simulation = status.simulation_enabled ? ` <b>Simulation is on</b>: the rules use ${percent(status.simulated_humidity_percent)}, not the sensor.` : "";
+  return `<p>${mode} Mist is <b>${keys.mist ? "on" : "off"}</b>, fan is <b>${keys.fan ? "on" : "off"}</b>.${simulation}</p>`;
+}
+
+function helpBandRows(rules, currentBand) {
+  const { rh_dry_below: dry, rh_band_low: low, rh_band_high: high, rh_wet_above: wet } = rules;
+  const nudge = `${rules.vent_on_seconds} s on / ${rules.vent_off_seconds} s off`;
+  return [
+    ["dry", `below ${percent(dry)}`, "on", "off"],
+    ["recovering", `${percent(dry)} – ${percent(low)}`, "keeps its state", "off"],
+    ["healthy", `${percent(low)} – ${percent(high)}`, "keeps its state", "off"],
+    ["drying", `${percent(high)} – ${percent(wet)}`, "off", nudge],
+    ["wet", `${percent(wet)} and above`, "off", nudge],
+  ].map(([band, range, mist, fan]) =>
+    `<tr class="${band === currentBand ? "current" : ""}"><td>${band}</td><td>${range}</td><td>${mist}</td><td>${fan}</td></tr>`).join("");
+}
+
+function renderHelp() {
+  const status = snapshot?.status;
+  const rules = rulesFrom(status);
+  const currentBand = bandFor(status, bandEdges(status));
+  byId("help-body").innerHTML = `
+    <h3>Right now</h3>
+    ${helpNow(status)}
+    <h3>Bands</h3>
+    <p>With AUTO on, the firmware sorts the smoothed humidity into a band and each band always does the same thing.${rules.reported ? "" : " <b>Showing firmware defaults</b>: the device has not reported its own values (it needs the band-model firmware)."}</p>
+    <table>
+      <thead><tr><th>Band</th><th>Humidity</th><th>Mist</th><th>Fan</th></tr></thead>
+      <tbody>${helpBandRows(rules, currentBand)}</tbody>
+    </table>
+    <h3>Rules</h3>
+    <ul>
+      <li><b>Mist</b> turns on below ${percent(rules.rh_dry_below)} and off at or above ${percent(rules.rh_band_high)}. In between it keeps whatever it was doing, so it never flickers around one number.</li>
+      <li><b>Fan</b> only nudges when it is too wet: ${rules.vent_on_seconds} s on, ${rules.vent_off_seconds} s off, at or above ${percent(rules.rh_band_high)}. It stops once humidity is back below that and has settled.</li>
+      <li><b>Settling</b>: a new band must hold for ${rules.band_hold_seconds} s before its action starts, so a short spike changes nothing.</li>
+      <li><b>Sensor failure</b>: with AUTO on and no readable humidity, the firmware keeps mist <b>on</b> and the fan off until the sensor answers again.</li>
+      <li><b>AUTO off</b> is service mode: FAN and MIST toggle the relays directly and the bands are ignored.</li>
+      <li><b>Restarts and updates</b>: both relays stay off for 5 s after the board boots and during a firmware update.</li>
+    </ul>`;
+}
+
+byId("help-open").addEventListener("click", () => {
+  renderHelp();
+  byId("help").showModal();
+});
+byId("help-close").addEventListener("click", () => byId("help").close());
+// A target check alone also fires on the dialog's scrollbar and on drags released outside.
+byId("help").addEventListener("click", (event) => {
+  const box = event.currentTarget.getBoundingClientRect();
+  const outside = event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom;
+  if (event.target === event.currentTarget && outside) event.currentTarget.close();
+});
 
 document.querySelectorAll("[data-key]").forEach((key) =>
   key.addEventListener("click", () => sendKey(key.dataset.key)));
