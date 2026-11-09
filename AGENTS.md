@@ -22,6 +22,7 @@ Read `PRODUCT.md` first.
 ## Decisions
 
 - The panel is a PWA served by the server, not a native app. The owner has an iPhone (no native iOS app), and the panel must stay on the tailnet (no public hosting). Same origin as the API means no CORS, and the Tailscale certificate gives the HTTPS iOS needs to install it. The desktop floating widget is a thin Tauri shell loading the same URL; window class `monotub`, floated and centered by the `monotub-widget` rule in the dotfiles' Hyprland `windowrules.lua`. The window sets `url` explicitly: with only `build.frontendDist` set to the remote URL, Tauri 2 looked for a bundled `index.html` ("asset not found").
+- The server ships as `ghcr.io/genoux/monotub-server` and `compose.yaml` deploys it (R8). Mosquitto runs the image's built-in `/mosquitto-no-auth.conf` (anonymous listener on 1883, tailnet-only host) instead of a custom config and bind mount. It keeps no persistent state: the ESP32 republishes its retained state when it reconnects.
 - The humidity graph keeps its history in the page (last 2 min of polls); the server stores no history.
 - Automation is the linear band model: four RH edges (`rh_dry_below`, `rh_band_low`, `rh_band_high`, `rh_wet_above`) split five bands, and the firmware maps each band to one action. The panel lights the band from `current_band` (the band engaged after the hold time, so it matches the relays) and computes it from the edges only when the firmware does not report one.
 

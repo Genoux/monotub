@@ -1,0 +1,57 @@
+# Managed by jb sync (R8): do not edit. Once the Release workflow has passed
+# for a tag, builds every Dockerfile in the repo and publishes it to ghcr.io.
+# workflow_run only fires for workflows on the default branch, so this starts
+# working once it is merged; jb check keeps the name below in step with
+# release.yml.
+name: Image
+
+on:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    if: github.event.workflow_run.conclusion == 'success' && startsWith(github.event.workflow_run.head_branch, 'v')
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.workflow_run.head_branch }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Version matches the tag
+        run: |
+          expected="${TAG#v}"
+          found=$(.toolkit/version)
+          if [ "$found" != "$expected" ]; then
+            echo "manifest says $found, tag says $expected" >&2
+            exit 1
+          fi
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        run: |
+          version="${TAG#v}"
+          owner=$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
+          repo=$(echo "${GITHUB_REPOSITORY#*/}" | tr '[:upper:]' '[:lower:]')
+          find . -maxdepth 2 -name Dockerfile -not -path '*/node_modules/*' -not -path '*/target/*' -not -path './.git/*' | sort | while read -r dockerfile; do
+            context=$(dirname "$dockerfile")
+            image="ghcr.io/$owner/$repo"
+            [ "$context" = . ] || image="$image-$(basename "$context" | tr '[:upper:]' '[:lower:]')"
+            tags="-t $image:$version"
+            case "$version" in *-*) ;; *) tags="$tags -t $image:latest" ;; esac
+            # shellcheck disable=SC2086
+            docker build --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" $tags "$context"
+            docker push --all-tags "$image"
+          done

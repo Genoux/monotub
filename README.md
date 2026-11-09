@@ -192,6 +192,20 @@ cd esp32 && MONOTUB_OTA_HOST=monotub.local MONOTUB_OTA_PASSWORD=<OTA_PASSWORD> p
 Both relays switch off when the update starts and stay off through the reboot and the boot delay;
 a failed update hands them back to the controller.
 
+## Running the server
+
+Locally, from source, with a throwaway broker:
+
+```sh
+docker run --rm -p 1883:1883 eclipse-mosquitto:2 mosquitto -c /mosquitto-no-auth.conf
+cd server && bun run dev
+```
+
+Deployment runs the published image: tagging a release makes CI push
+`ghcr.io/genoux/monotub-server` (RULES.md R8). Paste `compose.yaml` into Portainer or a ZimaOS
+custom app; set `MONOTUB_VERSION` to pin a version and `HTTP_PORT` to move the panel. The first
+published package must be made public once in the GitHub package settings.
+
 ## Panel and desktop widget
 
 The server serves the control panel at `https://monotub.tail2e56f0.ts.net` (tailnet only). On an
