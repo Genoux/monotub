@@ -174,8 +174,10 @@ Global:
 
 ## Flashing the ESP32
 
-Copy `esp32/include/secrets.h.example` to `esp32/include/secrets.h` and fill in Wi-Fi, MQTT and
-`OTA_PASSWORD`.
+Copy `esp32/include/secrets.h.example` to `esp32/include/secrets.h` and fill in Wi-Fi. MQTT defaults to `homeserver.local`: name the broker's machine `homeserver` and the board finds it by mDNS whatever its IP. To point a running board elsewhere, send `mqtt host[:port]` over USB serial (115200 baud); it is saved on the board.
+Leave `OTA_PASSWORD` as it is: the first build replaces it with a random password and prints it
+once. Save it if you will flash from another computer. To get a new one, delete the
+`OTA_PASSWORD` line and flash over USB again.
 
 The first flash goes over USB:
 
@@ -183,10 +185,11 @@ The first flash goes over USB:
 cd esp32 && pio run -e esp32dev -t upload
 ```
 
-After that, flash over Wi-Fi. The board answers as `monotub.local` (or use its IP):
+After that, flash over Wi-Fi. The board answers as `monotub.local` (or use its IP). The password
+is read from `secrets.h`; set `MONOTUB_OTA_PASSWORD` only to override it:
 
 ```sh
-cd esp32 && MONOTUB_OTA_HOST=monotub.local MONOTUB_OTA_PASSWORD=<OTA_PASSWORD> pio run -e esp32dev-ota -t upload
+cd esp32 && MONOTUB_OTA_HOST=monotub.local pio run -e esp32dev-ota -t upload
 ```
 
 Both relays switch off when the update starts and stay off through the reboot and the boot delay;
