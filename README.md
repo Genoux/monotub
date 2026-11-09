@@ -192,8 +192,27 @@ is read from `secrets.h`; set `MONOTUB_OTA_PASSWORD` only to override it:
 cd esp32 && MONOTUB_OTA_HOST=monotub.local pio run -e esp32dev-ota -t upload
 ```
 
+The board connects back to the flashing computer on TCP port 3233, so a host firewall must allow
+it from the LAN, for example `sudo ufw allow from 192.168.86.0/24 to any port 3233 proto tcp`.
+
 Both relays switch off when the update starts and stay off through the reboot and the boot delay;
 a failed update hands them back to the controller.
+
+## Moving the box
+
+The board remembers the last Wi-Fi it joined. A fresh board starts with `WIFI_SSID` from
+`secrets.h`; after that the saved network wins, so changing `secrets.h` and reflashing does not
+move a configured board. When that network is not reachable at boot, it opens a setup hotspot for 3 minutes:
+
+1. On your phone, join the Wi-Fi `monotub-setup`. Its password is the `OTA_PASSWORD` from
+   `secrets.h`.
+2. The setup page opens by itself (otherwise browse to `http://192.168.4.1`). Pick your network
+   and type its password.
+3. The board joins it and keeps it. Unplug it and plug it back in to get the hotspot again if you
+   missed the 3 minutes.
+
+Humidity control keeps running while the hotspot is open. The broker must still be reachable as
+`homeserver.local` on the new network (see the `mqtt` serial command above to point it elsewhere).
 
 ## Running the server
 

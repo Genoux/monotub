@@ -311,18 +311,12 @@ bool mqttConnect() {
 }
 
 void mqttMaintain() {
-  if (WiFi.isConnected()) {
-    if (!client.connected()) {
-      if (millis() - g.runtime.lastMqttRetry > MQTT_RETRY_MS) {
-        g.runtime.lastMqttRetry = millis();
-        mqttConnect();
-      }
-    } else {
-      client.loop();
-    }
-  } else if (millis() - g.runtime.lastWifiRetry > WIFI_RETRY_MS) {
-    g.runtime.lastWifiRetry = millis();
-    WiFi.reconnect();
+  if (!WiFi.isConnected()) return;
+  if (client.connected()) {
+    client.loop();
+  } else if (millis() - g.runtime.lastMqttRetry > MQTT_RETRY_MS) {
+    g.runtime.lastMqttRetry = millis();
+    mqttConnect();
   }
 }
 

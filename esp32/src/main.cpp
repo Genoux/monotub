@@ -108,6 +108,7 @@ void setup() {
 }
 
 void loop() {
+  wifiMaintain();
   otaHandle();
   mqttHandleSerialConfig();
   mqttMaintain();
