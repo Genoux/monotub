@@ -33,3 +33,5 @@ Read `PRODUCT.md` first.
 ## Project rules
 
 <!-- Rules that apply only here, or a deliberate exception to RULES.md with the reason. -->
+
+Every agent follows the shared rules in `.toolkit/RULES.md` (managed by jb-toolkit); deliberate exceptions are in `.jb-exceptions`.
