@@ -73,6 +73,12 @@ constexpr uint32_t RELAY_BOOT_DELAY_MS = 5000;
 constexpr const char* OTA_HOSTNAME = "monotub";
 constexpr uint32_t MQTT_RETRY_MS = 5000;
 constexpr uint32_t WIFI_RETRY_MS = 10000;
+// Setup hotspot opened when the saved Wi-Fi is not reachable at boot (README › Moving the box).
+constexpr const char* WIFI_SETUP_AP_NAME = "monotub-setup";
+constexpr uint32_t WIFI_CONNECT_TIMEOUT_S = 15;
+// The saved network is not retried while the hotspot is open; after this it closes and retrying
+// resumes, so a router that is slow to come back after a power cut is rejoined within ~3 min.
+constexpr uint32_t WIFI_SETUP_PORTAL_TIMEOUT_S = 180;
 
 // Publish immediately when telemetry moves enough to matter.
 constexpr float ENV_HUMIDITY_PUBLISH_DELTA = 0.5F;
