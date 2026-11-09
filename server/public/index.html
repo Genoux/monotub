@@ -36,13 +36,16 @@ body {
 }
 .bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .bar h1, .bar h2 { margin: 0; font-size: 18px; font-weight: 900; letter-spacing: 0.12em; }
+/* Both are bare marks on a 20px target; the hover fill shows the hit area. */
 .help-open, .help-close {
-  width: 20px; height: 20px; padding: 0 0 0 1.5px; border-radius: 50%; cursor: pointer; display: grid; place-items: center;
-  background: transparent; border: 1px solid var(--ink); font-size: 12px; line-height: 1;
+  width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; cursor: pointer; display: grid; place-items: center;
+  background: transparent; font-size: 12px; line-height: 1;
 }
 .help-open:hover, .help-close:hover { background: var(--ink-hover); }
 .app > .bar { align-items: flex-start; }
-.help-open { width: 16px; height: 16px; padding: 0 0 0 1px; border: 0; font-size: 12px; }
+/* Doto's "?" carries its right bearing; 1px left padding centres it in the box. */
+.help-open { padding-left: 1px; }
+.help-close svg { width: 10px; height: 10px; }
 .help-open:focus-visible, .help-close:focus-visible, .key:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 
 .help {
@@ -52,6 +55,8 @@ body {
 }
 .help-sheet { padding: 16px 20px 18px; outline: none; }
 .help::backdrop { background: rgba(0, 0, 0, 0.5); }
+.help { scrollbar-width: thin; scrollbar-color: var(--ink-dim) transparent; }
+::selection { background: var(--ink); color: var(--glass); }
 .help h2, .help h3 { font-family: "Doto", monospace; font-weight: 900; }
 .help h3 { margin: 16px 0 6px; font-size: 15px; letter-spacing: 0.06em; text-transform: uppercase; }
 .help p, .help ul { margin: 0 0 6px; }
@@ -60,8 +65,10 @@ body {
 .help .now, .help tr.current td { background: var(--ink); color: var(--glass); }
 .help .now { padding: 0 4px; }
 .help table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-.help th, .help td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--ink-dim); }
-.help th { font-weight: 700; font-size: 12px; }
+.help table { font-size: 12px; }
+.help th, .help td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--ink-dim); }
+.help th, .help td:first-child { white-space: nowrap; }
+.help th { font-weight: 700; }
 
 .display { display: flex; flex-direction: column; container-type: inline-size; }
 .ann-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 12px; }
@@ -72,13 +79,22 @@ body {
 
 .keys { display: flex; gap: 6px; margin-left: auto; }
 .key {
-  display: inline-grid; place-items: center; width: 58px; height: 24px; cursor: pointer;
-  /* Doto glyphs carry ~3px of right bearing at 14px; the text sat 1.5px left of centre without this. */
-  padding: 0 0 0 1.5px; border: 1px solid var(--ink); border-radius: 3px; background: transparent;
+  display: inline-flex; align-items: center; justify-content: center; height: 24px; cursor: pointer;
+  /* Doto leaves ~1.3px of empty space after the last letter at 14px; the uneven padding re-centres the ink (measured at 8x). */
+  padding: 0 4.35px 0 5.65px; border: 1px solid var(--ink); border-radius: 3px; background: transparent;
   font-size: 14px; line-height: 1; transition: background 0.12s, transform 0.06s;
 }
 .key:not(:disabled):hover { background: var(--ink-hover); }
 .key:active { transform: scale(0.97); }
+.fan-icon { width: 0.75em; height: 0.75em; flex: none; }
+/* The fan has less empty space on its left than a letter, so this switch needs less of the shift. */
+.key:has(.fan-icon) { gap: 6px; padding: 0 4.6px 0 5.4px; }
+/* T leaves its lower right empty, so MIST's ink mass sits 1px left of its edges (AUTO: 0.3px); 0.75px more shift matches AUTO's optical centre (measured at 8x). */
+.key[data-key="mist"] { padding: 0 3.6px 0 6.4px; }
+/* Stepped like an LCD repaint: three 30° frames, since a 90° step looks still on a four-blade fan. */
+.key[aria-pressed="true"] .fan-icon { animation: fan-turn 0.6s steps(3) infinite; }
+@keyframes fan-turn { to { rotate: 90deg; } }
+@media (prefers-reduced-motion: reduce) { .key[aria-pressed="true"] .fan-icon { animation: none; } }
 .key[aria-pressed="true"] { background: var(--ink); color: var(--glass); }
 .key[aria-pressed="true"]:not(:disabled):hover { background: var(--ink-pressed-hover); }
 .key:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
@@ -117,7 +133,7 @@ body {
 /* Touch and narrow screens get full-width 44px switches; the widget is exactly 560px wide and keeps its own. */
 @media (pointer: coarse), (max-width: 560px) {
   :root:not(.widget) .keys { width: 100%; gap: 8px; }
-  :root:not(.widget) .key { flex: 1; width: auto; height: 44px; font-size: 16px; }
+  :root:not(.widget) .key { flex: 1; width: auto; height: 44px; font-size: 16px; justify-content: center; gap: 6px; }
 }
 
 /* Desktop widget (/?widget): the same screen cut down to fill a 560x220 window (no plate or graph labels). */
@@ -147,7 +163,7 @@ body {
       <div class="ann" id="bands"></div>
       <div class="keys" role="group" aria-label="Controls">
         <button class="key" data-key="auto" aria-pressed="false">AUTO</button>
-        <button class="key" data-key="fan" aria-pressed="false">FAN</button>
+        <button class="key" data-key="fan" aria-pressed="false"><svg class="fan-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 6.6C8 3 8.9 1 10.6 1s2.7 2.2 0 4.9M9.4 8c3.6 0 5.6.9 5.6 2.6s-2.2 2.7-4.9 0M8 9.4c0 3.6-.9 5.6-2.6 5.6S2.7 12.8 5.4 10.1M6.6 8C3 8 1 7.1 1 5.4s2.2-2.7 4.9 0"/><circle cx="8" cy="8" r="1.5"/></svg>FAN</button>
         <button class="key" data-key="mist" aria-pressed="false">MIST</button>
       </div>
     </div>
@@ -174,7 +190,7 @@ body {
   <div class="help-sheet" tabindex="-1" autofocus>
     <header class="bar">
       <h2 id="help-title">How it works</h2>
-      <button class="help-close" id="help-close" aria-label="Close">×</button>
+      <button class="help-close" id="help-close" aria-label="Close"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="square"/></svg></button>
     </header>
     <div id="help-body"></div>
   </div>
@@ -409,13 +425,14 @@ function helpNow(status) {
 
 function helpBandRows(rules, currentBand) {
   const { rh_dry_below: dry, rh_band_low: low, rh_band_high: high, rh_wet_above: wet } = rules;
-  const nudge = `${rules.vent_on_seconds} s on / ${rules.vent_off_seconds} s off`;
+  // Non-breaking spaces keep each number with its unit (and "its state") when the phone table wraps.
+  const nudge = `${rules.vent_on_seconds}&nbsp;s on / ${rules.vent_off_seconds}&nbsp;s&nbsp;off`;
   return [
-    ["dry", `below ${percent(dry)}`, "on", "off"],
-    ["recovering", `${percent(dry)} – ${percent(low)}`, "keeps its state", "off"],
-    ["healthy", `${percent(low)} – ${percent(high)}`, "keeps its state", "off"],
-    ["drying", `${percent(high)} – ${percent(wet)}`, "off", nudge],
-    ["wet", `${percent(wet)} and above`, "off", nudge],
+    ["dry", `below&nbsp;${percent(dry)}`, "on", "off"],
+    ["recovering", `${percent(dry)}&nbsp;–&nbsp;${percent(low)}`, "keeps its&nbsp;state", "off"],
+    ["healthy", `${percent(low)}&nbsp;–&nbsp;${percent(high)}`, "keeps its&nbsp;state", "off"],
+    ["drying", `${percent(high)}&nbsp;–&nbsp;${percent(wet)}`, "off", nudge],
+    ["wet", `${percent(wet)}&nbsp;and above`, "off", nudge],
   ].map(([band, range, mist, fan]) =>
     `<tr class="${band === currentBand ? "current" : ""}"><td>${band}</td><td>${range}</td><td>${mist}</td><td>${fan}</td></tr>`).join("");
 }
@@ -436,11 +453,11 @@ function renderHelp() {
     <h3>Rules</h3>
     <ul>
       <li><b>Mist</b> turns on below ${percent(rules.rh_dry_below)} and off at or above ${percent(rules.rh_band_high)}. In between it keeps whatever it was doing, so it never flickers around one number.</li>
-      <li><b>Fan</b> only nudges when it is too wet: ${rules.vent_on_seconds} s on, ${rules.vent_off_seconds} s off, at or above ${percent(rules.rh_band_high)}. It stops once humidity is back below that and has settled.</li>
-      <li><b>Settling</b>: a new band must hold for ${rules.band_hold_seconds} s before its action starts, so a short spike changes nothing.</li>
+      <li><b>Fan</b> only nudges when it is too wet: ${rules.vent_on_seconds}&nbsp;s on, ${rules.vent_off_seconds}&nbsp;s off, at or above ${percent(rules.rh_band_high)}. It stops once humidity is back below that and has settled.</li>
+      <li><b>Settling</b>: a new band must hold for ${rules.band_hold_seconds}&nbsp;s before its action starts, so a short spike changes nothing.</li>
       <li><b>Sensor failure</b>: with AUTO on and no readable humidity, the firmware keeps mist <b>on</b> and the fan off until the sensor answers again.</li>
       <li><b>AUTO off</b> is service mode: FAN and MIST toggle the relays directly and the bands are ignored.</li>
-      <li><b>Restarts and updates</b>: both relays stay off for 5 s after the board boots and during a firmware update.</li>
+      <li><b>Restarts and updates</b>: both relays stay off for 5&nbsp;s after the board boots and during a firmware update.</li>
     </ul>`;
 }
 
