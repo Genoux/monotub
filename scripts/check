@@ -11,6 +11,7 @@ echo "==> desktop: fmt, clippy"
 
 echo "==> esp32: host-side unit tests"
 (cd esp32 && test_binary="$(mktemp)" && g++ -std=c++17 -Wall -Wextra -Werror -Iinclude test/broker_address_test.cpp -o "$test_binary" && "$test_binary" && rm "$test_binary")
+python3 esp32/scripts/ota_password.py
 
 echo "==> server: install, types"
 (cd server && bun install --frozen-lockfile && bun x tsc --noEmit)
