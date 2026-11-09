@@ -1,6 +1,6 @@
 {
   "name": "monotub-mqtt-server",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "MQTT bridge + HTTP API for the monotub ESP32 fan controller",
   "type": "module",
   "module": "src/server.ts",
