@@ -240,4 +240,6 @@ cd desktop && cargo build --release
 install -Dm755 target/release/monotub ~/.local/bin/monotub
 ```
 
-Left-click the tray icon to show or hide it; closing the window only hides it. The `?` button in the panel explains the current automation rules, using the values the device reports.
+Left-click the tray icon to show or hide it; closing the window only hides it. Launching it again
+shows the running widget instead of adding a second tray icon. The tray menu's **Start at login**
+checkbox adds or removes its login entry; to turn the widget off for good, untick it and choose **Quit**. The `?` button in the panel explains the current automation rules, using the values the device reports.
