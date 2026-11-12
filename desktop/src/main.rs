@@ -20,13 +20,8 @@ fn main() {
             let toggle = MenuItem::with_id(app, "toggle", "Show / hide", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&toggle, &quit])?;
-            let icon = app
-                .default_window_icon()
-                .cloned()
-                .ok_or("missing window icon")?;
-
             TrayIconBuilder::new()
-                .icon(icon)
+                .icon(tauri::include_image!("icons/tray.png"))
                 .tooltip("Monotub")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
